@@ -5,3 +5,6 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# 수집기 실행 결과 (매번 새로 생성됨)
+data/collected_news.json

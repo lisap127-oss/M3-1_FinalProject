@@ -1,0 +1,10 @@
+[
+  {"source": "연합뉴스", "category": "전체", "url": "https://www.yna.co.kr/rss/news.xml"},
+  {"source": "연합뉴스", "category": "경제", "url": "https://www.yna.co.kr/rss/economy.xml"},
+  {"source": "연합뉴스", "category": "산업", "url": "https://www.yna.co.kr/rss/industry.xml"},
+  {"source": "한겨레", "category": "전체", "url": "https://www.hani.co.kr/rss/"},
+  {"source": "한겨레", "category": "경제", "url": "https://www.hani.co.kr/rss/economy/"},
+  {"source": "경향신문", "category": "전체", "url": "https://www.khan.co.kr/rss/rssdata/total_news.xml"},
+  {"source": "동아일보", "category": "전체", "url": "https://rss.donga.com/total.xml"},
+  {"source": "ZDNet Korea", "category": "IT", "url": "https://feeds.feedburner.com/zdkorea"}
+]
