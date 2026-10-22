@@ -8,3 +8,7 @@ __pycache__/
 
 # 수집기 실행 결과 (매번 새로 생성됨)
 data/collected_news.json
+
+# 구독자 개인정보(이메일)와 발송 결과물은 커밋하지 않음
+data/subscribers.json
+data/briefings/

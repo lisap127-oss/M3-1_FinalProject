@@ -198,21 +198,36 @@ def strip_internal(items: list[dict]) -> list[dict]:
     return [{k: v for k, v in it.items() if not k.startswith("_")} for it in items]
 
 
-def collect(keywords: list[str], hours: int = 24, max_items: int = 30) -> list[dict]:
+def fetch_all_feeds() -> list[dict]:
+    """등록된 모든 RSS 피드를 가져온다. 피드 하나가 실패해도 나머지는 계속 수집한다."""
     all_items = []
     for feed in load_feeds():
         try:
             items = fetch_feed(feed)
             print(f"[OK]   {feed['source']}({feed['category']}): {len(items)}건")
             all_items.extend(items)
-        except Exception as e:  # 피드 하나가 실패해도 나머지는 계속 수집
+        except Exception as e:
             print(f"[FAIL] {feed['source']}({feed['category']}) {feed['url']} - {e}")
+    return all_items
 
+
+def select_news(
+    all_items: list[dict],
+    keywords: list[str],
+    hours: int = 24,
+    max_items: int = 30,
+) -> list[dict]:
+    """이미 수집한 기사 중에서 한 사용자의 키워드에 맞는 기사를 고른다.
+    구독자가 여러 명이어도 피드는 한 번만 가져오고 이 함수만 사용자별로 호출하면 된다."""
     news = filter_and_dedupe(all_items, keywords, hours)
     for kw in keywords:
         count = sum(1 for n in news if kw in n["_matched"])
         print(f"  - '{kw}' 매칭 {count}건")
     return strip_internal(balance_by_keyword(news, keywords, max_items))
+
+
+def collect(keywords: list[str], hours: int = 24, max_items: int = 30) -> list[dict]:
+    return select_news(fetch_all_feeds(), keywords, hours, max_items)
 
 
 def main():
