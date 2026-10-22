@@ -12,13 +12,13 @@ import argparse
 import json
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 
-from collectors.rss_news import fetch_all_feeds, select_news
+from collectors.rss_news import KST, fetch_all_feeds, select_news
 from pipelines.email_sender import build_subject, render_html, render_text, send_email
 
 
@@ -30,6 +30,17 @@ BRIEFINGS_DIR = ROOT / "data" / "briefings"
 API_URL = os.getenv("DAYBRIEF_API_URL", "http://127.0.0.1:8000")
 
 
+def today_kst() -> date:
+    """GitHub Actions 서버는 UTC라서 date.today()를 쓰면 한국 아침에 전날 날짜가 나온다."""
+    return datetime.now(KST).date()
+
+
+def mask_email(email: str) -> str:
+    """공개 저장소의 Actions 로그에 이메일이 그대로 남지 않도록 가린다. (dml45pp@gmail.com → d***@gmail.com)"""
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}" if domain else "***"
+
+
 def load_subscribers(path: Path) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(
@@ -39,7 +50,7 @@ def load_subscribers(path: Path) -> list[dict]:
     for s in subscribers:
         missing = {"user_id", "email", "keywords"} - s.keys()
         if missing:
-            raise ValueError(f"구독자 정보에 {missing} 항목이 없습니다: {s}")
+            raise ValueError(f"구독자 정보에 {missing} 항목이 없습니다 (user_id={s.get('user_id')})")
     return subscribers
 
 
@@ -111,14 +122,14 @@ def summarize_in_batches(
     if errors and succeeded == 0:
         raise errors[0]  # 전부 실패하면 이 구독자는 실패 처리
 
-    merged["briefing_date"] = merged["briefing_date"] or date.today().isoformat()
+    merged["briefing_date"] = merged["briefing_date"] or today_kst().isoformat()
     return merged
 
 
 def fake_summary(news: list[dict], keywords: list[str]) -> dict:
     """--no-ai 모드: 요약 API 대신 수집한 기사를 그대로 결과처럼 사용한다."""
     return {
-        "briefing_date": date.today().isoformat(),
+        "briefing_date": today_kst().isoformat(),
         "results": [
             {**n, "matched_keywords": [k for k in keywords if k in n["title"] + n["summary"]],
              "importance_score": 0}
@@ -154,19 +165,20 @@ def run(
             if not news:
                 print("  매칭 기사 없음 → '새 뉴스 없음' 안내 메일")
 
-            briefing_date = summary.get("briefing_date") or date.today().isoformat()
+            # LLM은 오늘 날짜를 모르므로 응답의 briefing_date 대신 실행 시점의 한국 날짜를 쓴다
+            briefing_date = today_kst().isoformat()
             subject = build_subject(keywords, briefing_date)
             html = render_html(name, summary)
             text = render_text(name, summary)
 
             if dry_run:
                 BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
-                out = BRIEFINGS_DIR / f"{date.today().isoformat()}_{user_id}.html"
+                out = BRIEFINGS_DIR / f"{briefing_date}_{user_id}.html"
                 out.write_text(html, encoding="utf-8")
                 print(f"  [DRY-RUN] {len(summary['results'])}건 → {out}")
             else:
                 send_email(email, subject, html, text)
-                print(f"  [SENT] {len(summary['results'])}건 → {email}")
+                print(f"  [SENT] {len(summary['results'])}건 → {mask_email(email)}")
 
         except httpx.ConnectError:
             failures += 1

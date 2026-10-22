@@ -1,0 +1,91 @@
+# DayBrief 일일 브리핑 자동 실행
+# 매일 아침 RSS 수집 → AI 요약 → 이메일 발송을 GitHub 서버에서 실행한다.
+#
+# 필요한 Repository secrets (Settings → Secrets and variables → Actions):
+#   GROQ_API_KEY        요약 모델 API 키
+#   GMAIL_ADDRESS       보내는 Gmail 주소
+#   GMAIL_APP_PASSWORD  위 계정에서 만든 앱 비밀번호
+#   SUBSCRIBERS_JSON    data/subscribers.json 내용 전체 (구독자 이메일은 공개되면 안 되므로 secret으로 관리)
+
+name: Daily Briefing
+
+on:
+  schedule:
+    # GitHub Actions의 cron은 UTC 기준: 22:30 UTC = 한국 시간 07:30
+    # (GitHub 서버 사정으로 수십 분 늦게 실행될 수 있음)
+    - cron: "30 22 * * *"
+  workflow_dispatch: # Actions 탭에서 수동 실행
+    inputs:
+      dry_run:
+        description: "메일을 보내지 않고 결과만 확인"
+        type: boolean
+        default: true
+
+concurrency:
+  group: daily-briefing
+  cancel-in-progress: false
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check secrets
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SUBSCRIBERS_JSON: ${{ secrets.SUBSCRIBERS_JSON }}
+        run: |
+          missing=0
+          for name in GROQ_API_KEY GMAIL_ADDRESS GMAIL_APP_PASSWORD SUBSCRIBERS_JSON; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name 이(가) 설정되지 않았습니다."; missing=1; fi
+          done
+          exit $missing
+
+      - name: Write subscribers file
+        env:
+          SUBSCRIBERS_JSON: ${{ secrets.SUBSCRIBERS_JSON }}
+        run: printf '%s' "$SUBSCRIBERS_JSON" > data/subscribers.json
+
+      - name: Start API server
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          nohup uvicorn main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/health > /dev/null; then echo "API 서버 준비 완료"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::API 서버가 30초 안에 켜지지 않았습니다."
+          cat server.log
+          exit 1
+
+      - name: Run daily briefing
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DAYBRIEF_API_URL: http://127.0.0.1:8000
+          # 예약 실행일 때는 inputs가 비어 있으므로 실제 발송
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python -m pipelines.daily_briefing --dry-run
+          else
+            python -m pipelines.daily_briefing
+          fi
+
+      - name: Show API server log
+        if: failure()
+        run: cat server.log

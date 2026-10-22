@@ -186,3 +186,20 @@ def test_smtp_wrong_password_shows_clear_error(monkeypatch):
     FakeSMTP.reject = True
     with pytest.raises(RuntimeError, match="Gmail 로그인 실패\\(535\\)"):
         sender.send_email("a@example.com", "제목", "<p>본문</p>", "본문")
+
+
+def test_mask_email_hides_address():
+    assert pipeline.mask_email("dml45pp@gmail.com") == "d***@gmail.com"
+    assert pipeline.mask_email("잘못된값") == "***"
+
+
+def test_sent_log_does_not_expose_email(capsys):
+    with patch.object(pipeline, "fetch_all_feeds", return_value=[]), \
+         patch.object(pipeline, "select_news", return_value=NEWS), \
+         patch.object(pipeline, "request_summary", return_value=SUMMARY), \
+         patch.object(pipeline, "send_email"):
+        pipeline.run([SUBSCRIBER])
+
+    out = capsys.readouterr().out
+    assert "a@example.com" not in out
+    assert "a***@example.com" in out
