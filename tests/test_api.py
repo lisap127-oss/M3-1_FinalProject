@@ -66,8 +66,13 @@ def test_summarize_news():
                 "summary": "AI 개발 도구가 공개됐다.",
                 "source": "테스트 뉴스",
                 "url": "https://example.com/news-001",
-                "published_at": "2026-10-13T09:00:00+09:00",
                 "matched_keywords": ["AI"],
+                "importance_breakdown": {
+                    "relevance": 35,
+                    "information_value": 25,
+                    "recency": 15,
+                    "practicality": 5,
+                },
                 "importance_score": 80,
                 "selection_reason": "사용자 키워드와 관련성이 높음",
             }
@@ -111,46 +116,49 @@ def test_summarize_news():
     assert data["excluded_news"] == []
 
 
+
 def test_summarize_passes_user_preferences():
     """사용자의 장기 기억이 요약 Agent 입력에 전달되는지 확인한다."""
     from unittest.mock import patch
 
     import main
+    from fastapi.testclient import TestClient
 
     user_id = "memory-test-user"
-    main.user_preferences[user_id] = {"AI": 3, "스타트업": -1}
+    preferences = {"AI": 3, "스타트업": -1}
 
-    fake_result = {
-        "briefing_date": "2026-10-15",
-        "results": [],
-        "excluded_news": [],
-    }
+    with (
+        patch.object(main, "get_preferences", return_value=preferences),
+        patch.object(
+            main,
+            "generate_summary",
+            return_value={
+                "briefing_date": "2026-10-23",
+                "results": [],
+                "excluded_news": [],
+            },
+        ) as mock_generate,
+    ):
+        client = TestClient(main.app)
 
-    request_data = {
-        "user_id": user_id,
-        "user_keywords": ["AI"],
-        "news": [
-            {
-                "id": "news-test-001",
-                "title": "AI 뉴스",
-                "summary": "AI 관련 테스트 뉴스입니다.",
-                "source": "테스트 출처",
-                "url": "https://example.com/news-test-001",
-                "published_at": "2026-10-15T09:00:00+09:00",
-            }
-        ],
-    }
+        response = client.post(
+            "/api/summarize",
+            json={
+                "user_id": user_id,
+                "user_keywords": ["AI"],
+                "news": [
+                    {
+                        "id": "news-001",
+                        "title": "테스트 뉴스",
+                        "summary": "테스트 요약",
+                        "source": "테스트",
+                        "url": "https://example.com/news-001",
+                        "published_at": "2026-10-23T09:00:00+09:00",
+                    }
+                ],
+            },
+        )
 
-    with patch("main.generate_summary", return_value=fake_result) as mock_agent:
-        response = main.summarize_news(main.SummarizeRequest(**request_data))
-
-    assert response == fake_result
-
-    agent_input = mock_agent.call_args.args[0]
-    assert agent_input["topic_preferences"] == {
-        "AI": 3,
-        "스타트업": -1,
-    }
-
-    # 테스트 데이터가 다른 테스트에 영향을 주지 않도록 정리
-    main.user_preferences.pop(user_id, None)
+    assert response.status_code == 200
+    input_data = mock_generate.call_args.args[0]
+    assert input_data["topic_preferences"] == preferences
