@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="관심 키워드로 뉴스를 골라 읽고, 피드백으로 나의 브리핑을 만들어 가세요.">
+  <title>나의 브리핑 · DayBrief</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 이동</a>
+  <header class="appbar">
+    <div class="appbar-inner">
+      <a class="wordmark" href="#briefing" aria-label="DayBrief 홈"><span class="logo-mark" aria-hidden="true"></span>DayBrief</a>
+      <nav class="tabs" aria-label="주요 메뉴">
+        <a href="#briefing" data-route="briefing">브리핑</a>
+        <a href="#settings" data-route="settings">관심사 설정</a>
+        <a href="#memory" data-route="memory">피드백 기록</a>
+      </nav>
+      <div class="connection"><span id="connection-status" class="status-pill" role="status">연결 확인 중</span><button id="check-health" class="text-button" type="button">다시 확인</button></div>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <div id="live" class="visually-hidden" role="status"></div>
+    <div id="notice" class="notice" role="status" hidden></div>
+
+    <section id="view-briefing" aria-labelledby="briefing-title">
+
+      <!-- 1. Compose: keywords + news file → generate -->
+      <section id="composer" class="card composer" aria-labelledby="briefing-title">
+        <div class="composer-head">
+          <p class="overline today"></p>
+          <h1 id="briefing-title">오늘 읽을 뉴스를 골라 드릴게요</h1>
+          <p class="lead">관심 키워드와 수집한 뉴스 파일을 넣으면, AI가 관련 기사만 골라 중요한 순서로 요약해요.</p>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><label for="keyword-input">관심 키워드</label><span class="field-hint">Enter 또는 쉼표로 추가 · 최대 20개</span></div>
+          <div id="tag-input" class="tag-input">
+            <ul id="keyword-tags" class="tags" aria-label="추가한 관심 키워드"></ul>
+            <input id="keyword-input" type="text" autocomplete="off" maxlength="100" placeholder="예: AI, 스타트업" aria-describedby="keyword-error">
+          </div>
+          <p id="keyword-error" class="field-error" role="alert" hidden></p>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><span id="news-label" class="label">뉴스 파일</span><span class="field-hint">JSON · 최대 30건, 1MB</span></div>
+          <label id="dropzone" class="dropzone" for="news-file">
+            <span class="dropzone-icon" aria-hidden="true" data-icon="upload"></span>
+            <span class="dropzone-text"><strong>파일을 끌어다 놓거나 클릭해서 선택하세요</strong><span>수집기로 만든 <code>data/collected_news.json</code></span></span>
+            <input id="news-file" class="visually-hidden" type="file" accept=".json,application/json" aria-labelledby="news-label" aria-describedby="import-error">
+          </label>
+          <div id="file-row" class="file-row" hidden>
+            <span class="file-icon" aria-hidden="true" data-icon="file"></span>
+            <span class="file-meta"><strong id="file-name"></strong><span id="file-count"></span></span>
+            <label class="secondary small-button" for="news-file">변경</label>
+          </div>
+          <details class="paste">
+            <summary>JSON 직접 붙여넣기</summary>
+            <p class="field-hint">기사마다 id, title, summary, source, url, published_at 문자열이 필요해요. <code>{"news": [...]}</code> 형식이나 기사 배열을 받아요.</p>
+            <label class="visually-hidden" for="news-json">뉴스 JSON</label>
+            <textarea id="news-json" rows="5" spellcheck="false" placeholder='{"news": [{"id": "news-001", "title": "기사 제목", "summary": "기사 내용", "source": "출처", "url": "https://…", "published_at": "2026-10-25T09:00:00+09:00"}]}' aria-describedby="import-error"></textarea>
+            <button id="import-json" class="secondary" type="button">붙여넣은 뉴스 불러오기</button>
+          </details>
+          <p id="import-error" class="field-error" role="alert" hidden></p>
+        </div>
+
+        <div id="summary-error-compose" class="alert alert-error" role="alert" hidden></div>
+
+        <div class="composer-foot">
+          <button id="generate" class="primary large" type="button" disabled>브리핑 만들기</button>
+          <p id="generate-hint" class="foot-hint"></p>
+          <div class="foot-links">
+            <button id="show-demo" type="button" class="text-button">예시 브리핑 먼저 보기</button>
+            <button id="back-to-results" type="button" class="text-button" hidden>현재 브리핑으로 돌아가기</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Progress -->
+      <section id="progress" class="card progress-card" aria-labelledby="progress-title" hidden>
+        <h2 id="progress-title">뉴스를 요약하고 있어요</h2>
+        <p id="loading-progress" class="lead" role="status">기사 수에 따라 시간이 걸릴 수 있어요.</p>
+        <div class="progress-track" aria-hidden="true"><span id="progress-bar" class="progress-bar"></span></div>
+        <div class="progress-foot"><span class="field-hint">묶음마다 최대 3분 정도 걸릴 수 있어요. 중단해도 서버 작업은 계속될 수 있어요.</span><button id="cancel-summary" type="button" class="secondary">요청 중단</button></div>
+      </section>
+
+      <!-- 3. Results -->
+      <section id="results" aria-labelledby="results-title" aria-busy="false" hidden>
+        <div id="demo-banner" class="alert alert-warn demo-banner" hidden><div><strong>예시 브리핑이에요</strong><p>저장소의 테스트 기사로 만든 화면이에요. 실제 뉴스·AI 응답이 아니며 원문 링크와 피드백은 제공하지 않아요.</p></div><button id="leave-demo" class="secondary" type="button">예시 닫기</button></div>
+        <div class="results-head">
+          <div>
+            <p id="results-date" class="overline"></p>
+            <h1 id="results-title" tabindex="-1"></h1>
+            <p id="results-meta" class="lead"></p>
+          </div>
+          <button id="new-briefing" class="secondary" type="button">새 브리핑 만들기</button>
+        </div>
+        <div id="summary-error" class="alert alert-error" role="alert" hidden></div>
+        <div class="toolbar">
+          <div id="keyword-filters" class="segmented" role="group" aria-label="키워드별 보기"></div>
+          <div class="toolbar-right">
+            <label class="search"><span class="visually-hidden">뉴스 검색</span><span class="search-icon" aria-hidden="true" data-icon="search"></span><input type="search" id="search" placeholder="제목, 내용, 언론사 검색"></label>
+            <label class="sort"><span class="visually-hidden">정렬</span><select id="sort"><option value="importance">중요도순</option><option value="recent">최신순</option></select></label>
+          </div>
+        </div>
+        <p id="feedback-hint" class="feedback-hint" hidden></p>
+        <ol id="news-list" class="story-list"></ol>
+        <div id="empty-state" class="empty-state" hidden></div>
+        <details id="excluded" class="card excluded" hidden><summary id="excluded-label"></summary><ul id="excluded-list"></ul></details>
+        <p class="ai-note">AI가 선정하고 요약한 내용에는 오류가 있을 수 있어요. 중요한 정보는 기사 원문에서 확인하세요.</p>
+      </section>
+    </section>
+
+    <section id="view-settings" class="narrow" aria-labelledby="settings-title" hidden>
+      <div class="page-head"><h1 id="settings-title">관심사 설정</h1><p class="lead">브리핑에 쓰는 키워드와 피드백 연결 정보를 관리해요.</p></div>
+      <form id="settings-form" class="card form-card" novalidate>
+        <div class="field">
+          <label for="keywords">관심 키워드</label>
+          <textarea id="keywords" rows="3" placeholder="예: AI, 스타트업, 개발자 채용" required></textarea>
+          <p id="keywords-help" class="field-hint">쉼표나 줄바꿈으로 구분해요. 최대 20개, 각 100자까지 입력할 수 있어요.</p>
+        </div>
+        <div class="field">
+          <label for="user-id">사용자 ID <span class="optional">선택</span></label>
+          <input id="user-id" maxlength="100" autocomplete="off" placeholder="팀에서 발급받은 사용자 ID">
+          <p id="user-help" class="field-hint">피드백 저장과 기록 조회에 필요해요. ID 없이도 브리핑은 만들 수 있어요. 로그인이나 본인 인증 기능은 아니에요.</p>
+        </div>
+        <div id="settings-error" class="alert alert-error" role="alert" hidden></div>
+        <div class="form-foot">
+          <p class="field-hint">이 브라우저에만 저장돼요. 이메일 구독 설정에는 반영되지 않아요.</p>
+          <button class="primary" type="submit">관심사 저장</button>
+        </div>
+      </form>
+      <section class="card quiet-card">
+        <h2>이메일 구독</h2>
+        <p>현재 이메일 발송은 팀에서 관리하는 구독자 목록을 사용해요. 구독 신청·변경 API가 연결되면 이곳에서 설정할 수 있어요.</p>
+      </section>
+      <div class="danger-zone"><button id="clear-settings" class="text-button danger" type="button">이 기기에 저장한 설정 지우기</button></div>
+    </section>
+
+    <section id="view-memory" class="narrow" aria-labelledby="memory-title" hidden>
+      <div class="page-head with-action"><div><h1 id="memory-title">피드백 기록</h1><p id="memory-user" class="lead"></p></div><button id="refresh-memory" class="secondary" type="button">기록 불러오기</button></div>
+      <div id="memory-error" class="alert alert-error" role="alert" hidden></div>
+      <div id="memory-loading" class="card loading-card" role="status" hidden><span class="spinner" aria-hidden="true"></span>피드백 기록을 불러오고 있어요.</div>
+      <div id="memory-content"></div>
+    </section>
+  </main>
+</body>
+</html>

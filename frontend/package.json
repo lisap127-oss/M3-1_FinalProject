@@ -1,0 +1,9 @@
+{
+  "name": "daybrief-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check api.mjs && node --check domain.mjs && node --check demo.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}
