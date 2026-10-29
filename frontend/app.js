@@ -179,7 +179,7 @@ async function generate() {
   } finally {
     if (run === state.generation) {
       state.busy = false; $('results').setAttribute('aria-busy', 'false');
-      updateView(); renderResults();
+      updateView(); renderResults(); renderDashBriefing();
       // The progress card disappears, so move focus to what replaced it.
       if (state.hasResult) $('results-title').focus(); else $('generate').focus();
     }
@@ -188,6 +188,7 @@ async function generate() {
 function setProgress(done, total) {
   $('progress-bar').style.width = `${Math.max(6, Math.round(done / total * 100))}%`;
   $('loading-progress').textContent = done < total ? `${total}개 묶음 중 ${done}개 완료 · 기사 ${state.news.length}건` : '결과를 정리하고 있어요.';
+  renderDashBriefing();
 }
 
 // ---------- Results ----------
@@ -338,6 +339,22 @@ function memoryPlaceholder() {
   else empty.append(node('h2', '', '사용자 ID가 필요해요'), node('p', '', '팀에서 발급받은 사용자 ID를 설정하면 기록을 볼 수 있어요.'), link('관심사 설정으로 이동', '#settings', 'secondary'));
   $('memory-content').replaceChildren(empty);
 }
+function checkMemory(data) {
+  if (!data || !data.topic_preferences || typeof data.topic_preferences !== 'object' || Array.isArray(data.topic_preferences) ||
+      Object.entries(data.topic_preferences).some(([k, v]) => !k || !Number.isInteger(v) || v < -5 || v > 5) ||
+      !Array.isArray(data.feedback_history) || data.feedback_history.some(h => !h || typeof h.topic !== 'string' || !['like', 'dislike'].includes(h.feedback_type) || typeof h.news_id !== 'string' || !Number.isInteger(h.new_score))) {
+    throw new Error('피드백 기록 응답 형식을 확인할 수 없어요.');
+  }
+  return data;
+}
+function preferenceBar(topic, score) {
+  const bar = node('span', 'pref-bar'); bar.setAttribute('role', 'img'); bar.setAttribute('aria-label', `${topic} 선호도 ${score}, 범위 −5부터 +5`);
+  const fill = node('span', `pref-fill ${score < 0 ? 'negative' : ''}`);
+  fill.style.width = `${Math.abs(score) * 10}%`;
+  fill.style.left = score < 0 ? `${50 - Math.abs(score) * 10}%` : '50%';
+  bar.append(fill);
+  return bar;
+}
 async function loadMemory() {
   if (!state.settings.userId) return;
   memoryController?.abort(); memoryController = new AbortController();
@@ -345,13 +362,8 @@ async function loadMemory() {
   $('refresh-memory').disabled = true; $('memory-loading').hidden = false;
   $('memory-content').replaceChildren(); message('memory-error');
   try {
-    const data = await api.memory(state.settings.userId, memoryController.signal);
+    const data = checkMemory(await api.memory(state.settings.userId, memoryController.signal));
     if (generation !== state.memoryGeneration) return;
-    if (!data || !data.topic_preferences || typeof data.topic_preferences !== 'object' || Array.isArray(data.topic_preferences) ||
-        Object.entries(data.topic_preferences).some(([k, v]) => !k || !Number.isInteger(v) || v < -5 || v > 5) ||
-        !Array.isArray(data.feedback_history) || data.feedback_history.some(h => !h || typeof h.topic !== 'string' || !['like', 'dislike'].includes(h.feedback_type) || typeof h.news_id !== 'string' || !Number.isInteger(h.new_score))) {
-      throw new Error('피드백 기록 응답 형식을 확인할 수 없어요.');
-    }
     renderMemory(data);
   } catch (error) {
     if (generation === state.memoryGeneration && error.name !== 'AbortError') message('memory-error', error.message);
@@ -371,12 +383,7 @@ function renderMemory(data) {
   const prefList = node('ul', 'pref-list');
   for (const [topic, score] of preferences) {
     const row = node('li', 'pref-row');
-    const bar = node('span', 'pref-bar'); bar.setAttribute('role', 'img'); bar.setAttribute('aria-label', `${topic} 선호도 ${score}, 범위 −5부터 +5`);
-    const fill = node('span', `pref-fill ${score < 0 ? 'negative' : ''}`);
-    fill.style.width = `${Math.abs(score) * 10}%`;
-    fill.style.left = score < 0 ? `${50 - Math.abs(score) * 10}%` : '50%';
-    bar.append(fill);
-    row.append(node('strong', 'pref-topic', topic), bar, node('span', `pref-score ${score < 0 ? 'negative' : ''}`, `${score > 0 ? '+' : ''}${score}`));
+    row.append(node('strong', 'pref-topic', topic), preferenceBar(topic, score), node('span', `pref-score ${score < 0 ? 'negative' : ''}`, `${score > 0 ? '+' : ''}${score}`));
     prefList.append(row);
   }
   if (preferences.length) prefCard.append(prefList);
@@ -397,6 +404,125 @@ function renderMemory(data) {
   }
   if (data.feedback_history.length) historyCard.append(list);
   $('memory-content').replaceChildren(prefCard, historyCard);
+}
+
+// ---------- Dashboard ----------
+
+let dashController;
+function dashCard(title, id) {
+  const card = node('section', 'card dash-card'); if (id) card.id = id;
+  const head = node('div', 'card-head'); head.append(node('h2', '', title)); card.append(head);
+  return card;
+}
+function stat(label, value, unit = '') {
+  const tile = node('div', 'stat');
+  const number = node('p', 'stat-value', String(value)); if (unit) number.append(node('span', 'stat-unit', unit));
+  tile.append(node('p', 'stat-label', label), number);
+  return tile;
+}
+function renderDashboard() {
+  dashController?.abort();
+  const card = dashCard('오늘의 브리핑', 'dash-briefing');
+  const keywords = dashCard('키워드별 선별 기사');
+  const prefs = dashCard('내 관심 주제', 'dash-prefs');
+  const delivery = dashCard('이메일 브리핑');
+  $('dashboard-content').replaceChildren(card, node('div', 'dash-grid'), delivery);
+  $('dashboard-content').children[1].append(keywords, prefs);
+  renderDashBriefing();
+
+  // Keyword distribution from the current briefing (real results only, never the example).
+  const results = state.mode === 'real' && state.hasResult ? state.results : [];
+  const counts = state.settings.keywords.map(k => [k, results.filter(r => r.matched_keywords.includes(k)).length]).sort((a, b) => b[1] - a[1]);
+  if (!state.settings.keywords.length) keywords.append(node('p', 'empty-inline', '관심 키워드를 추가하면 키워드별 기사 수를 보여 드려요.'), link('키워드 추가하기', '#briefing', 'inline-link'));
+  else if (!results.length) keywords.append(node('p', 'empty-inline', `브리핑을 만들면 키워드 ${state.settings.keywords.length}개의 기사 수가 표시돼요.`));
+  else {
+    const max = Math.max(1, ...counts.map(c => c[1]));
+    const list = node('ul', 'bar-list');
+    for (const [keyword, count] of counts) {
+      const li = node('li', 'bar-row');
+      const track = node('span', 'bar-track'); track.setAttribute('aria-hidden', 'true');
+      const fill = node('span', 'bar-fill'); fill.style.width = `${count / max * 100}%`; track.append(fill);
+      li.append(node('span', 'bar-label', keyword), track, node('span', 'bar-value', `${count}건`));
+      list.append(li);
+    }
+    keywords.append(list);
+  }
+
+  loadDashPrefs(prefs);
+
+  // Fixed schedule from .github/workflows/daily-briefing.yml (cron 30 22 * * * UTC).
+  const dl = node('dl', 'facts');
+  for (const [term, desc] of [['발송 시간', '매일 오전 7:30 (한국 시간)'], ['받는 사람', '팀에서 관리하는 구독자 목록'], ['설정 변경', '구독 API가 연결되면 이곳에서 바꿀 수 있어요']]) {
+    const row = node('div', 'fact'); row.append(node('dt', '', term), node('dd', '', desc)); dl.append(row);
+  }
+  delivery.append(dl);
+}
+function renderDashBriefing() {
+  const card = $('dash-briefing'); if (!card) return;
+  card.replaceChildren(card.firstChild);
+  if (state.busy) {
+    card.append(node('p', 'dash-status', '뉴스를 요약하고 있어요.'), node('p', 'field-hint', $('loading-progress').textContent), link('진행 상황 보기', '#briefing', 'secondary'));
+    return;
+  }
+  if (state.mode === 'real' && state.hasResult) {
+    const avg = state.results.length ? Math.round(state.results.reduce((s, r) => s + r.importance_score, 0) / state.results.length) : 0;
+    const stats = node('div', 'stats');
+    stats.append(stat('선별 기사', state.results.length, '건'), stat('제외 기사', state.excluded.length, '건'), stat('평균 중요도', state.results.length ? avg : '–', state.results.length ? '/100' : ''));
+    card.append(node('p', 'field-hint', `${state.sourceName}의 기사 ${state.news.length}건을 요약했어요.`), stats);
+    const top = [...state.results].sort((a, b) => b.importance_score - a.importance_score).slice(0, 3);
+    if (top.length) {
+      const list = node('ol', 'top-list');
+      top.forEach((n, i) => {
+        const li = node('li'); const copy = node('div', 'top-copy');
+        copy.append(node('strong', '', n.title), node('span', '', `${n.source} · 중요도 ${n.importance_score}`));
+        li.append(node('span', 'rank', String(i + 1)), copy); list.append(li);
+      });
+      card.append(node('h3', 'dash-sub', '중요도 상위 기사'), list);
+    }
+    card.append(link('전체 브리핑 보기', '#briefing', 'secondary'));
+    return;
+  }
+  const hasKeywords = state.settings.keywords.length > 0, hasNews = state.news.length > 0;
+  const checklist = node('ul', 'checklist');
+  for (const [done, text] of [[hasKeywords, hasKeywords ? `관심 키워드 ${state.settings.keywords.length}개` : '관심 키워드 추가'], [hasNews, hasNews ? `뉴스 파일 ${state.news.length}건` : '뉴스 파일 불러오기']]) {
+    const li = node('li', done ? 'done' : ''); li.append(node('span', 'check-mark', done ? '완료' : '필요'), node('span', '', text)); checklist.append(li);
+  }
+  card.append(node('p', 'dash-status', '아직 오늘 브리핑이 없어요.'), checklist, link(hasKeywords && hasNews ? '브리핑 만들기' : '브리핑 준비하기', '#briefing', 'primary'));
+}
+async function loadDashPrefs(card) {
+  const id = state.settings.userId;
+  if (!id) {
+    card.append(node('p', 'empty-inline', '사용자 ID를 설정하면 피드백으로 쌓인 주제별 선호도를 보여 드려요.'), link('사용자 ID 설정하기', '#settings', 'inline-link'));
+    return;
+  }
+  const status = node('p', 'empty-inline', '선호도를 불러오고 있어요.'); status.setAttribute('role', 'status'); card.append(status);
+  dashController = new AbortController();
+  try {
+    const data = checkMemory(await api.memory(id, dashController.signal));
+    if (!card.isConnected) return;
+    const history = data.feedback_history;
+    const likes = history.filter(h => h.feedback_type === 'like').length;
+    const top = Object.entries(data.topic_preferences).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]) || b[1] - a[1]).slice(0, 4);
+    status.remove();
+    const stats = node('div', 'stats compact');
+    stats.append(stat('피드백', history.length, '건'), stat('좋아요', likes, '건'), stat('싫어요', history.length - likes, '건'));
+    card.append(stats);
+    if (!top.length) card.append(node('p', 'empty-inline', '아직 저장된 선호도가 없어요. 브리핑에서 첫 피드백을 남겨 보세요.'));
+    else {
+      const list = node('ul', 'pref-list');
+      for (const [topic, score] of top) {
+        const row = node('li', 'pref-row');
+        row.append(node('strong', 'pref-topic', topic), preferenceBar(topic, score), node('span', `pref-score ${score < 0 ? 'negative' : ''}`, `${score > 0 ? '+' : ''}${score}`));
+        list.append(row);
+      }
+      card.append(list);
+    }
+    card.append(link('전체 기록 보기', '#memory', 'inline-link'));
+  } catch (error) {
+    if (error.name === 'AbortError' || !card.isConnected) return;
+    status.className = 'field-error'; status.textContent = `선호도를 불러오지 못했어요. ${error.message}`;
+    card.append(button('다시 시도', 'secondary', () => { card.replaceChildren(card.firstChild); loadDashPrefs(card); }));
+  }
 }
 
 // ---------- Settings & routing ----------
@@ -423,13 +549,14 @@ function saveSettings(event) {
 }
 function route(focus = true) {
   let name = location.hash.slice(1);
-  if (!['briefing', 'settings', 'memory'].includes(name)) { name = 'briefing'; history.replaceState(null, '', '#briefing'); }
-  memoryController?.abort(); state.memoryGeneration++;
+  if (!['dashboard', 'briefing', 'settings', 'memory'].includes(name)) { name = 'dashboard'; history.replaceState(null, '', '#dashboard'); }
+  memoryController?.abort(); dashController?.abort(); state.memoryGeneration++;
   $('memory-loading').hidden = true; message('memory-error'); message('notice');
-  for (const view of ['briefing', 'settings', 'memory']) $(`view-${view}`).hidden = view !== name;
+  for (const view of ['dashboard', 'briefing', 'settings', 'memory']) $(`view-${view}`).hidden = view !== name;
   document.querySelectorAll('[data-route]').forEach(a => { if (a.dataset.route === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (name === 'memory') memoryPlaceholder();
-  document.title = `${{briefing: '나의 브리핑', settings: '관심사 설정', memory: '피드백 기록'}[name]} · DayBrief`;
+  if (name === 'dashboard') renderDashboard();
+  document.title = `${{dashboard: '대시보드', briefing: '나의 브리핑', settings: '관심사 설정', memory: '피드백 기록'}[name]} · DayBrief`;
   if (focus) { $('main').focus(); window.scrollTo(0, 0); }
 }
 async function checkHealth() {

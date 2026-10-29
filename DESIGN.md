@@ -59,7 +59,7 @@ Default, hover, focus-visible, pending, disabled, and pressed (sent feedback use
 
 ## 9. Screens and responsive layout
 
-Routes `#briefing`, `#settings`, `#memory`. Briefing shows exactly one of composer, progress, or results. At 760px or narrower tabs move to a full-width second row, toolbars stack, story footers stack, and vote buttons become full-width 44px targets. No horizontal scrolling at 360px.
+Routes `#dashboard` (default), `#briefing`, `#settings`, `#memory`. The dashboard shows today's briefing stats and top 3 articles (real results only, never the example), keyword distribution bars (single accent hue, counts as text), a server preference summary, and the fixed email schedule from the workflow; its two middle cards stack below 760px. Briefing shows exactly one of composer, progress, or results. At 760px or narrower tabs move to a full-width second row, toolbars stack, story footers stack, and vote buttons become full-width 44px targets. No horizontal scrolling at 360px.
 
 Example mode keeps the warn banner visible while sample content is shown and never offers links or feedback.
 

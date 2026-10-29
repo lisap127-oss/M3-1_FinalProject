@@ -14,8 +14,9 @@
   <a class="skip-link" href="#main">본문으로 이동</a>
   <header class="appbar">
     <div class="appbar-inner">
-      <a class="wordmark" href="#briefing" aria-label="DayBrief 홈"><span class="logo-mark" aria-hidden="true"></span>DayBrief</a>
+      <a class="wordmark" href="#dashboard" aria-label="DayBrief 홈"><span class="logo-mark" aria-hidden="true"></span>DayBrief</a>
       <nav class="tabs" aria-label="주요 메뉴">
+        <a href="#dashboard" data-route="dashboard">홈</a>
         <a href="#briefing" data-route="briefing">브리핑</a>
         <a href="#settings" data-route="settings">관심사 설정</a>
         <a href="#memory" data-route="memory">피드백 기록</a>
@@ -28,7 +29,12 @@
     <div id="live" class="visually-hidden" role="status"></div>
     <div id="notice" class="notice" role="status" hidden></div>
 
-    <section id="view-briefing" aria-labelledby="briefing-title">
+    <section id="view-dashboard" aria-labelledby="dashboard-title" hidden>
+      <div class="page-head"><p class="overline today"></p><h1 id="dashboard-title">대시보드</h1><p class="lead">오늘 브리핑과 피드백 현황을 한곳에서 확인해요.</p></div>
+      <div id="dashboard-content"></div>
+    </section>
+
+    <section id="view-briefing" aria-labelledby="briefing-title" hidden>
 
       <!-- 1. Compose: keywords + news file → generate -->
       <section id="composer" class="card composer" aria-labelledby="briefing-title">
