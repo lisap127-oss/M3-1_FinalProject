@@ -47,19 +47,21 @@ Default, hover, focus-visible, pending, disabled, and pressed (sent feedback use
 
 ## 8. Components
 
-- App bar: logo mark + DayBrief wordmark, underline tabs, API status pill (checking/ok/error) with retry.
-- Composer card (briefing start): date overline, title, keyword tag input (Enter/comma adds, Backspace removes, saves to this browser), file dropzone with drag-and-drop → file row with change action, optional JSON paste, full-width primary `브리핑 만들기 · 기사 N건` with a reason hint when disabled, example link.
+- App bar: logo mark + DayBrief wordmark, underline tabs (홈, 오늘의 브리핑, 내 취향, 관심사 설정). No developer status in the app bar.
+- Composer card (briefing start): date overline, title, read-only keyword chips with a `바꾸기` link to settings, a news-status panel (no keywords / no news / N articles ready), full-width primary `브리핑 만들기` only when news exists (otherwise `예시 브리핑 보기` is the main action), and a collapsed `테스트 도구` disclosure holding the API status pill, file dropzone and JSON paste.
 - Progress card: batch progress bar, explanatory hint, cancel.
 - Results: date overline, `선별한 기사 N건` title, source/keyword meta, `새 브리핑 만들기`; filter pills with counts, search, sort.
 - Story card: rank, source · time, importance badge (≥80 accent, 60–79 neutral, below outline), title, summary, keyword tags, footer with original link, selection-reason disclosure, like/dislike (topic select only when several keywords match).
 - Excluded-articles disclosure card, AI caution note.
-- Settings form card, quiet email-subscription card, destructive clear action.
-- Memory: diverging preference bars (−5…+5, centre line) and feedback history with like/dislike icons.
+- Settings: keyword card (tag input that saves on edit, Enter/comma adds, Backspace removes, dashed suggestion chips), subscriber-ID form card, quiet email card, destructive clear action. Keywords are edited only here.
+- Features in preparation (일정·중요 메일, 저녁 리포트, 받는 시간과 채널): dashed `coming-card`s or a disabled fieldset with a grey `준비 중` badge. They describe what will appear and what it needs; they never show sample data or pretend to save.
+- Report switch: pill toggle `아침 브리핑 / 저녁 리포트` at the top of `#briefing` and `#evening`; both keep the `오늘의 브리핑` app-bar tab current.
+- Memory (내 취향): diverging preference bars (−5…+5, centre line) with a `덜 보고 싶어요 / 더 보고 싶어요` legend, and feedback history with like/dislike icons.
 - When an action hides or disables the focused control, focus moves to its result (results title, cancel, feedback status, generate button after failure).
 
 ## 9. Screens and responsive layout
 
-Routes `#dashboard` (default), `#briefing`, `#settings`, `#memory`. The dashboard shows today's briefing stats and top 3 articles (real results only, never the example), keyword distribution bars (single accent hue, counts as text), a server preference summary, and the fixed email schedule from the workflow; its two middle cards stack below 760px. Briefing shows exactly one of composer, progress, or results. At 760px or narrower tabs move to a full-width second row, toolbars stack, story footers stack, and vote buttons become full-width 44px targets. No horizontal scrolling at 360px.
+Routes `#dashboard` (default), `#briefing`, `#evening`, `#settings`, `#memory`. The dashboard leads with one state-driven hero card that names the next action (pick keywords with suggestion chips → make a briefing or view the example → top 3 articles of the real briefing, never the example), then a three-step usage strip (hidden once all steps are done), then the preference summary and the fixed email schedule, which stack below 760px. Briefing shows exactly one of composer, progress, or results. At 760px or narrower tabs move to a full-width second row, toolbars stack, story footers stack, and vote buttons become full-width 44px targets. No horizontal scrolling at 360px.
 
 Example mode keeps the warn banner visible while sample content is shown and never offers links or feedback.
 

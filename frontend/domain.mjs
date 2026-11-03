@@ -1,6 +1,9 @@
 export const MAX_NEWS = 30;
 export const MAX_FILE_BYTES = 1024 * 1024;
 export const STORAGE_KEY = 'daybrief.settings.v1';
+export const SESSION_KEY = 'daybrief.briefing.v1';
+export const FEEDBACK_KEY = 'daybrief.feedback.v1';
+const MAX_FEEDBACK_ENTRIES = 500;
 
 export function safeUrl(value) {
   try {
@@ -83,4 +86,42 @@ export function loadSettings(storage) {
         typeof value.userId !== 'string' || value.userId.length > 100) return {keywords: [], userId: ''};
     return {keywords: parseKeywords(value.keywords.join(',')), userId: value.userId.trim()};
   } catch { return {keywords: [], userId: ''}; }
+}
+
+// Restores the last real briefing of this tab. Anything malformed is dropped, never partially trusted.
+export function loadSession(storage) {
+  const empty = {news: [], sourceName: '', results: [], excluded: [], hasResult: false};
+  const text = value => typeof value === 'string';
+  try {
+    const value = JSON.parse(storage.getItem(SESSION_KEY));
+    if (!value || !Array.isArray(value.news) || !value.news.length || !text(value.sourceName) ||
+        !Array.isArray(value.results) || !Array.isArray(value.excluded)) return empty;
+    const news = parseNews(JSON.stringify(value.news));
+    const originals = new Map(news.map(n => [n.id, n]));
+    const resultsValid = value.results.every(n => originals.has(n?.id) && text(n.summary) && text(n.selection_reason) &&
+      Number.isInteger(n.importance_score) && n.importance_score >= 0 && n.importance_score <= 100 &&
+      Array.isArray(n.matched_keywords) && n.matched_keywords.every(text));
+    const excludedValid = value.excluded.every(n => originals.has(n?.id) && text(n.reason));
+    if (!resultsValid || !excludedValid) return {...empty, news, sourceName: value.sourceName};
+    // Title, source, URL and time always come from the validated article, as after a fresh summary.
+    const results = value.results.map(n => ({...originals.get(n.id), summary: n.summary, importance_score: n.importance_score,
+      matched_keywords: n.matched_keywords, selection_reason: n.selection_reason}));
+    const excluded = value.excluded.map(n => ({id: n.id, title: originals.get(n.id).title, reason: n.reason}));
+    return {news, sourceName: value.sourceName, results, excluded, hasResult: results.length + excluded.length > 0};
+  } catch { return empty; }
+}
+
+// Feedback already sent from this browser. A request still pending at reload has an unknown outcome.
+export function loadFeedback(storage) {
+  try {
+    const entries = JSON.parse(storage.getItem(FEEDBACK_KEY));
+    if (!Array.isArray(entries)) return new Map();
+    return new Map(entries.filter(e => Array.isArray(e) && typeof e[0] === 'string' && ['like', 'dislike'].includes(e[1]?.type) && typeof e[1].message === 'string')
+      .map(([key, entry]) => [key, entry.pending ?
+        {type: entry.type, tone: 'error', message: '저장 여부를 확인하지 못했어요. 내 취향에서 확인하세요.'} :
+        {type: entry.type, tone: entry.tone === 'success' ? 'success' : 'error', message: entry.message}]));
+  } catch { return new Map(); }
+}
+export function serializeFeedback(feedback) {
+  return JSON.stringify([...feedback].slice(-MAX_FEEDBACK_ENTRIES));
 }

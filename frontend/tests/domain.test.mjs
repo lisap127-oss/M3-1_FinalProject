@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseNews, parseKeywords, visibleNews, validateSummary, loadSettings, safeUrl} from '../domain.mjs';
+import {parseNews, parseKeywords, visibleNews, validateSummary, loadSettings, loadSession, loadFeedback, serializeFeedback, safeUrl,
+  SESSION_KEY, FEEDBACK_KEY} from '../domain.mjs';
 
 const news = {id: '1', title: 'AI 소식', summary: '요약할 내용', source: '뉴스', url: 'https://example.com/1', published_at: '2026-10-25T09:00:00+09:00'};
 test('collector payload and raw article arrays preserve only the existing NewsItem contract', () => {
@@ -45,4 +46,25 @@ test('search, keyword filters and sort compose without mutating results', () => 
   assert.deepEqual(visibleNews(input, '', '', 'importance'), [b, a]);
   assert.deepEqual(visibleNews(input, '', '', 'recent'), [a, b]);
   assert.deepEqual(input, [a, b]);
+});
+test('a stored briefing is restored from the validated article, and malformed data is dropped', () => {
+  const store = value => ({getItem: key => key === SESSION_KEY ? JSON.stringify(value) : null});
+  const result = {id: '1', title: 'Changed', url: 'https://wrong.example', summary: '요약', importance_score: 80, matched_keywords: ['AI'], selection_reason: '이유'};
+  const restored = loadSession(store({news: [news], sourceName: 'a.json', results: [result], excluded: []}));
+  assert.equal(restored.hasResult, true);
+  assert.equal(restored.results[0].title, news.title);
+  assert.equal(restored.results[0].url, news.url);
+  const broken = loadSession(store({news: [news], sourceName: 'a.json', results: [{...result, importance_score: 'high'}], excluded: []}));
+  assert.deepEqual([broken.news, broken.results, broken.hasResult], [[news], [], false]);
+  assert.equal(loadSession(store({news: [{...news, url: 'javascript:1'}], sourceName: '', results: [], excluded: []})).news.length, 0);
+  assert.equal(loadSession({getItem() { throw Error(); }}).hasResult, false);
+});
+test('sent feedback survives a reload; a pending request becomes an unknown outcome', () => {
+  const sent = new Map([['["u","1","AI"]', {type: 'like', tone: 'success', message: '반영했어요.'}], ['["u","2","AI"]', {type: 'dislike', pending: true, message: '저장하고 있어요.'}]]);
+  const stored = serializeFeedback(sent);
+  const loaded = loadFeedback({getItem: key => key === FEEDBACK_KEY ? stored : null});
+  assert.equal(loaded.get('["u","1","AI"]').tone, 'success');
+  assert.equal(loaded.get('["u","2","AI"]').tone, 'error');
+  assert.equal(loaded.get('["u","2","AI"]').pending, undefined);
+  assert.equal(loadFeedback({getItem: () => '{"bad":1}'}).size, 0);
 });

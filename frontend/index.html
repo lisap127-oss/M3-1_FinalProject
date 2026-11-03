@@ -17,11 +17,10 @@
       <a class="wordmark" href="#dashboard" aria-label="DayBrief 홈"><span class="logo-mark" aria-hidden="true"></span>DayBrief</a>
       <nav class="tabs" aria-label="주요 메뉴">
         <a href="#dashboard" data-route="dashboard">홈</a>
-        <a href="#briefing" data-route="briefing">브리핑</a>
+        <a href="#briefing" data-route="briefing">오늘의 브리핑</a>
+        <a href="#memory" data-route="memory">내 취향</a>
         <a href="#settings" data-route="settings">관심사 설정</a>
-        <a href="#memory" data-route="memory">피드백 기록</a>
       </nav>
-      <div class="connection"><span id="connection-status" class="status-pill" role="status">연결 확인 중</span><button id="check-health" class="text-button" type="button">다시 확인</button></div>
     </div>
   </header>
 
@@ -30,61 +29,69 @@
     <div id="notice" class="notice" role="status" hidden></div>
 
     <section id="view-dashboard" aria-labelledby="dashboard-title" hidden>
-      <div class="page-head"><p class="overline today"></p><h1 id="dashboard-title">대시보드</h1><p class="lead">오늘 브리핑과 피드백 현황을 한곳에서 확인해요.</p></div>
+      <div class="page-head"><p class="overline today"></p><h1 id="dashboard-title">오늘의 DayBrief</h1></div>
       <div id="dashboard-content"></div>
     </section>
 
     <section id="view-briefing" aria-labelledby="briefing-title" hidden>
+      <nav class="report-switch" aria-label="리포트 종류"><a href="#briefing" data-report="briefing">아침 브리핑</a><a href="#evening" data-report="evening">저녁 리포트</a></nav>
 
-      <!-- 1. Compose: keywords + news file → generate -->
+      <!-- 1. Compose: saved keywords + today's news → generate -->
       <section id="composer" class="card composer" aria-labelledby="briefing-title">
         <div class="composer-head">
           <p class="overline today"></p>
-          <h1 id="briefing-title">오늘 읽을 뉴스를 골라 드릴게요</h1>
-          <p class="lead">관심 키워드와 수집한 뉴스 파일을 넣으면, AI가 관련 기사만 골라 중요한 순서로 요약해요.</p>
+          <h1 id="briefing-title">오늘의 브리핑</h1>
+          <p class="lead">관심 키워드에 맞는 기사만 골라 중요한 순서로 요약해 드려요.</p>
         </div>
 
-        <div class="field">
-          <div class="field-head"><label for="keyword-input">관심 키워드</label><span class="field-hint">Enter 또는 쉼표로 추가 · 최대 20개</span></div>
-          <div id="tag-input" class="tag-input">
-            <ul id="keyword-tags" class="tags" aria-label="추가한 관심 키워드"></ul>
-            <input id="keyword-input" type="text" autocomplete="off" maxlength="100" placeholder="예: AI, 스타트업" aria-describedby="keyword-error">
+        <div class="summary-row">
+          <div class="summary-copy">
+            <span id="composer-keywords-label" class="label">관심 키워드</span>
+            <ul id="composer-keywords" class="chips" aria-labelledby="composer-keywords-label"></ul>
           </div>
-          <p id="keyword-error" class="field-error" role="alert" hidden></p>
+          <a id="edit-keywords" class="secondary small-button" href="#settings">바꾸기</a>
         </div>
 
-        <div class="field">
-          <div class="field-head"><span id="news-label" class="label">뉴스 파일</span><span class="field-hint">JSON · 최대 30건, 1MB</span></div>
-          <label id="dropzone" class="dropzone" for="news-file">
-            <span class="dropzone-icon" aria-hidden="true" data-icon="upload"></span>
-            <span class="dropzone-text"><strong>파일을 끌어다 놓거나 클릭해서 선택하세요</strong><span>수집기로 만든 <code>data/collected_news.json</code></span></span>
-            <input id="news-file" class="visually-hidden" type="file" accept=".json,application/json" aria-labelledby="news-label" aria-describedby="import-error">
-          </label>
-          <div id="file-row" class="file-row" hidden>
-            <span class="file-icon" aria-hidden="true" data-icon="file"></span>
-            <span class="file-meta"><strong id="file-name"></strong><span id="file-count"></span></span>
-            <label class="secondary small-button" for="news-file">변경</label>
-          </div>
-          <details class="paste">
-            <summary>JSON 직접 붙여넣기</summary>
-            <p class="field-hint">기사마다 id, title, summary, source, url, published_at 문자열이 필요해요. <code>{"news": [...]}</code> 형식이나 기사 배열을 받아요.</p>
-            <label class="visually-hidden" for="news-json">뉴스 JSON</label>
-            <textarea id="news-json" rows="5" spellcheck="false" placeholder='{"news": [{"id": "news-001", "title": "기사 제목", "summary": "기사 내용", "source": "출처", "url": "https://…", "published_at": "2026-10-25T09:00:00+09:00"}]}' aria-describedby="import-error"></textarea>
-            <button id="import-json" class="secondary" type="button">붙여넣은 뉴스 불러오기</button>
-          </details>
-          <p id="import-error" class="field-error" role="alert" hidden></p>
-        </div>
-
+        <div id="news-status" class="news-status"></div>
         <div id="summary-error-compose" class="alert alert-error" role="alert" hidden></div>
 
         <div class="composer-foot">
           <button id="generate" class="primary large" type="button" disabled>브리핑 만들기</button>
           <p id="generate-hint" class="foot-hint"></p>
           <div class="foot-links">
-            <button id="show-demo" type="button" class="text-button">예시 브리핑 먼저 보기</button>
+            <button id="show-demo" type="button" class="text-button">예시 브리핑 보기</button>
             <button id="back-to-results" type="button" class="text-button" hidden>현재 브리핑으로 돌아가기</button>
           </div>
         </div>
+
+        <!-- Test tools: until news collection is connected to the web, a news file is the only real input. -->
+        <details class="dev-tools">
+          <summary>테스트 도구 <span>뉴스 파일로 직접 만들기</span></summary>
+          <div class="dev-body">
+            <div class="dev-status"><span class="field-hint">서버 연결</span><span id="connection-status" class="status-pill" role="status">연결 확인 중</span><button id="check-health" class="text-button" type="button">다시 확인</button></div>
+            <div class="field">
+              <div class="field-head"><span id="news-label" class="label">뉴스 파일</span><span class="field-hint">JSON · 최대 30건, 1MB</span></div>
+              <label id="dropzone" class="dropzone" for="news-file">
+                <span class="dropzone-icon" aria-hidden="true" data-icon="upload"></span>
+                <span class="dropzone-text"><strong>파일을 끌어다 놓거나 클릭해서 선택하세요</strong><span>수집기로 만든 <code>data/collected_news.json</code></span></span>
+                <input id="news-file" class="visually-hidden" type="file" accept=".json,application/json" aria-labelledby="news-label" aria-describedby="import-error">
+              </label>
+              <div id="file-row" class="file-row" hidden>
+                <span class="file-icon" aria-hidden="true" data-icon="file"></span>
+                <span class="file-meta"><strong id="file-name"></strong><span id="file-count"></span></span>
+                <label class="secondary small-button" for="news-file">변경</label>
+              </div>
+              <details class="paste">
+                <summary>JSON 직접 붙여넣기</summary>
+                <p class="field-hint">기사마다 id, title, summary, source, url, published_at 문자열이 필요해요. <code>{"news": [...]}</code> 형식이나 기사 배열을 받아요.</p>
+                <label class="visually-hidden" for="news-json">뉴스 JSON</label>
+                <textarea id="news-json" rows="5" spellcheck="false" placeholder='{"news": [{"id": "news-001", "title": "기사 제목", "summary": "기사 내용", "source": "출처", "url": "https://…", "published_at": "2026-10-25T09:00:00+09:00"}]}' aria-describedby="import-error"></textarea>
+                <button id="import-json" class="secondary" type="button">붙여넣은 뉴스 불러오기</button>
+              </details>
+              <p id="import-error" class="field-error" role="alert" hidden></p>
+            </div>
+          </div>
+        </details>
       </section>
 
       <!-- 2. Progress -->
@@ -120,38 +127,128 @@
         <details id="excluded" class="card excluded" hidden><summary id="excluded-label"></summary><ul id="excluded-list"></ul></details>
         <p class="ai-note">AI가 선정하고 요약한 내용에는 오류가 있을 수 있어요. 중요한 정보는 기사 원문에서 확인하세요.</p>
       </section>
+
+      <!-- 4. Rest of the morning briefing: layout only until calendar and mail integrations exist. -->
+      <section class="coming-section" aria-labelledby="morning-more-title">
+        <div class="section-head"><h2 id="morning-more-title">오늘 일정 · 중요 메일</h2><span class="badge-soon">준비 중</span></div>
+        <div class="coming-grid">
+          <article class="card coming-card">
+            <span class="coming-icon" aria-hidden="true" data-icon="calendar"></span>
+            <h3>오늘 일정</h3>
+            <p>Google 캘린더를 연결하면 오늘 일정과 미리 챙길 것을 시간순으로 보여 드려요.</p>
+            <p class="coming-need">캘린더 연동 후 제공</p>
+          </article>
+          <article class="card coming-card">
+            <span class="coming-icon" aria-hidden="true" data-icon="mail"></span>
+            <h3>중요 메일</h3>
+            <p>Gmail을 연결하면 답장이 필요하거나 중요한 메일만 골라 알려 드려요.</p>
+            <p class="coming-need">Gmail 연동 후 제공</p>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <!-- Evening report: layout only. No data source exists yet, so nothing here is generated. -->
+    <section id="view-evening" aria-labelledby="evening-title" hidden>
+      <nav class="report-switch" aria-label="리포트 종류"><a href="#briefing" data-report="briefing">아침 브리핑</a><a href="#evening" data-report="evening">저녁 리포트</a></nav>
+      <div class="page-head">
+        <p class="overline today"></p>
+        <h1 id="evening-title">저녁 리포트 <span class="badge-soon">준비 중</span></h1>
+        <p class="lead">하루를 마무리하며 오늘 놓친 정보와 내일 준비할 것을 정리해 드려요.</p>
+      </div>
+      <div class="coming-list">
+        <article class="card coming-card">
+          <span class="coming-icon" aria-hidden="true" data-icon="summary"></span>
+          <h3>오늘 하루 요약</h3>
+          <p>오늘 읽은 브리핑과 남긴 좋아요·싫어요, 지나간 일정을 한눈에 정리해요.</p>
+          <p class="coming-need">저녁 발송 기능 준비 후 제공</p>
+        </article>
+        <article class="card coming-card">
+          <span class="coming-icon" aria-hidden="true" data-icon="calendar"></span>
+          <h3>내일 준비사항</h3>
+          <p>내일 일정과 미리 챙겨야 할 것을 알려 드려요.</p>
+          <p class="coming-need">캘린더 연동 후 제공</p>
+        </article>
+        <article class="card coming-card">
+          <span class="coming-icon" aria-hidden="true" data-icon="check"></span>
+          <h3>놓친 정보 체크</h3>
+          <p>오늘 브리핑에서 열어 보지 않은 중요 기사와 확인하지 않은 메일을 다시 모아 드려요.</p>
+          <p class="coming-need">열람 기록·Gmail 연동 후 제공</p>
+        </article>
+      </div>
+      <p class="ai-note">저녁 리포트는 일정·메일 연동과 저녁 발송 기능이 준비되면 제공돼요.</p>
     </section>
 
     <section id="view-settings" class="narrow" aria-labelledby="settings-title" hidden>
-      <div class="page-head"><h1 id="settings-title">관심사 설정</h1><p class="lead">브리핑에 쓰는 키워드와 피드백 연결 정보를 관리해요.</p></div>
-      <form id="settings-form" class="card form-card" novalidate>
+      <div class="page-head"><h1 id="settings-title">관심사 설정</h1><p class="lead">관심 키워드를 정하면 브리핑이 그 주제의 기사만 골라요.</p></div>
+      <section class="card form-card" aria-labelledby="keywords-title">
+        <div class="section-head"><h2 id="keywords-title">관심 키워드</h2><span class="field-hint">최대 20개</span></div>
         <div class="field">
-          <label for="keywords">관심 키워드</label>
-          <textarea id="keywords" rows="3" placeholder="예: AI, 스타트업, 개발자 채용" required></textarea>
-          <p id="keywords-help" class="field-hint">쉼표나 줄바꿈으로 구분해요. 최대 20개, 각 100자까지 입력할 수 있어요.</p>
+          <label class="visually-hidden" for="keyword-input">관심 키워드 추가</label>
+          <div id="tag-input" class="tag-input">
+            <ul id="keyword-tags" class="tags" aria-label="추가한 관심 키워드"></ul>
+            <input id="keyword-input" type="text" autocomplete="off" maxlength="100" placeholder="키워드 입력 후 Enter" aria-describedby="keyword-help keyword-error">
+          </div>
+          <p id="keyword-help" class="field-hint">Enter나 쉼표로 추가하고, 바꾼 내용은 바로 저장돼요.</p>
+          <p id="keyword-error" class="field-error" role="alert" hidden></p>
         </div>
+        <div class="suggest">
+          <span id="suggest-label" class="field-hint">이런 키워드는 어때요?</span>
+          <div id="keyword-suggestions" class="suggest-list" role="group" aria-labelledby="suggest-label"></div>
+        </div>
+      </section>
+      <form id="settings-form" class="card form-card" novalidate aria-labelledby="userid-title">
+        <div class="section-head"><h2 id="userid-title">좋아요·싫어요 저장</h2><span class="optional">선택</span></div>
+        <p class="section-lead">구독자 ID를 넣으면 기사에 남긴 좋아요·싫어요가 저장되고, 다음 브리핑을 고를 때 반영돼요.</p>
         <div class="field">
-          <label for="user-id">사용자 ID <span class="optional">선택</span></label>
-          <input id="user-id" maxlength="100" autocomplete="off" placeholder="팀에서 발급받은 사용자 ID">
-          <p id="user-help" class="field-hint">피드백 저장과 기록 조회에 필요해요. ID 없이도 브리핑은 만들 수 있어요. 로그인이나 본인 인증 기능은 아니에요.</p>
+          <label for="user-id">구독자 ID</label>
+          <div class="inline-form">
+            <input id="user-id" maxlength="100" autocomplete="off" placeholder="예: user-001" aria-describedby="user-help settings-error">
+            <button class="primary" type="submit">저장</button>
+          </div>
+          <p id="user-help" class="field-hint">메일 구독 때 안내받은 ID예요. 로그인 기능은 아니에요.</p>
         </div>
         <div id="settings-error" class="alert alert-error" role="alert" hidden></div>
-        <div class="form-foot">
-          <p class="field-hint">이 브라우저에만 저장돼요. 이메일 구독 설정에는 반영되지 않아요.</p>
-          <button class="primary" type="submit">관심사 저장</button>
-        </div>
       </form>
-      <section class="card quiet-card">
-        <h2>이메일 구독</h2>
-        <p>현재 이메일 발송은 팀에서 관리하는 구독자 목록을 사용해요. 구독 신청·변경 API가 연결되면 이곳에서 설정할 수 있어요.</p>
+      <!-- Delivery settings: layout only. There is no API to save them, so the controls stay disabled. -->
+      <section class="card form-card" aria-labelledby="delivery-title">
+        <div class="section-head"><h2 id="delivery-title">받는 시간과 채널</h2><span class="badge-soon">준비 중</span></div>
+        <p class="section-lead">지금은 매일 오전 7:30에 이메일로만 보내요. 서버에 저장하는 기능이 연결되면 여기서 바꿀 수 있어요.</p>
+        <fieldset class="delivery" disabled>
+          <legend class="visually-hidden">받는 시간과 채널</legend>
+          <div class="delivery-row">
+            <label class="check"><input type="checkbox" checked> 아침 브리핑</label>
+            <label class="visually-hidden" for="morning-time">아침 브리핑 받는 시간</label>
+            <select id="morning-time">
+              <option>오전 6:00</option><option>오전 6:30</option><option>오전 7:00</option><option selected>오전 7:30</option>
+              <option>오전 8:00</option><option>오전 8:30</option><option>오전 9:00</option>
+            </select>
+          </div>
+          <div class="delivery-row">
+            <label class="check"><input type="checkbox"> 저녁 리포트</label>
+            <label class="visually-hidden" for="evening-time">저녁 리포트 받는 시간</label>
+            <select id="evening-time">
+              <option>오후 6:00</option><option>오후 7:00</option><option>오후 8:00</option><option selected>오후 9:00</option><option>오후 10:00</option>
+            </select>
+          </div>
+          <fieldset class="channel-group">
+            <legend class="label">받을 채널</legend>
+            <div class="channels">
+              <label class="check channel"><input type="checkbox" checked> 이메일</label>
+              <label class="check channel"><input type="checkbox"> 카카오톡</label>
+              <label class="check channel"><input type="checkbox"> 슬랙</label>
+            </div>
+          </fieldset>
+        </fieldset>
+        <div class="form-actions"><button class="primary" type="button" disabled>저장</button></div>
       </section>
       <div class="danger-zone"><button id="clear-settings" class="text-button danger" type="button">이 기기에 저장한 설정 지우기</button></div>
     </section>
 
     <section id="view-memory" class="narrow" aria-labelledby="memory-title" hidden>
-      <div class="page-head with-action"><div><h1 id="memory-title">피드백 기록</h1><p id="memory-user" class="lead"></p></div><button id="refresh-memory" class="secondary" type="button">기록 불러오기</button></div>
+      <div class="page-head with-action"><div><h1 id="memory-title">내 취향</h1><p id="memory-user" class="lead"></p></div><button id="refresh-memory" class="secondary" type="button">다시 불러오기</button></div>
       <div id="memory-error" class="alert alert-error" role="alert" hidden></div>
-      <div id="memory-loading" class="card loading-card" role="status" hidden><span class="spinner" aria-hidden="true"></span>피드백 기록을 불러오고 있어요.</div>
+      <div id="memory-loading" class="card loading-card" role="status" hidden><span class="spinner" aria-hidden="true"></span>내 취향을 불러오고 있어요.</div>
       <div id="memory-content"></div>
     </section>
   </main>
