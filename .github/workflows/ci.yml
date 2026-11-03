@@ -1,0 +1,42 @@
+name: Tests
+on:
+  pull_request:
+  push:
+    branches: [sub, main]
+permissions:
+  contents: read
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/test_api.py tests/test_agent_errors.py tests/test_rss_collector.py tests/test_daily_briefing.py tests/test_deployment.py -q
+      - run: npm --prefix frontend run check
+      - run: npm --prefix frontend test
+      - run: python -m unittest discover -s frontend/tests -p test_server.py -v
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -v ON_ERROR_STOP=1 -c 'create role anon; create role authenticated; create role service_role bypassrls;'
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/001_feedback.sql
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feedback.sql

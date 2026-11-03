@@ -1,8 +1,8 @@
-fastapi
-uvicorn
-openai
-python-dotenv
-pytest
-httpx
-feedparser
-supabase
+fastapi==0.141.1
+uvicorn==0.52.1
+openai==3.42.1
+python-dotenv==1.2.2
+pytest==9.2.0
+httpx==0.28.1
+feedparser==6.0.14
+supabase==2.33.0

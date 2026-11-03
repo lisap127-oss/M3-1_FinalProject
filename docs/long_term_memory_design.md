@@ -1,3 +1,5 @@
+> **2026-11-03 배포/QA 변경:** 아래 내용은 이전 구현 기록을 포함합니다. 최신 배포/DB 설정은 [배포 안내](DEPLOYMENT.md)를 참고하세요. 피드백은 Supabase `record_feedback` RPC로 저장하고 같은 사용자·기사·주제의 중복을 차단합니다. 실제 배포/연동 검증 상태는 QA 문서에 기록합니다.
+
 # DayBrief AI — Long-term Memory 구조 설계
 
 ## 1. 설계 목적

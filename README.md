@@ -51,6 +51,18 @@
 - `frontend/`: 뉴스 브리핑·관심사·피드백 기록 화면
 - `tests/`: 기존 백엔드 및 파이프라인 테스트
 
+## 배포·DB·QA (조영경 담당)
+
+- [배포 및 환경 변수 안내](docs/DEPLOYMENT.md)
+- [QA 결과와 실제 연동 체크리스트](docs/QA.md)
+- [새 Supabase DB용 스키마/RPC](supabase/migrations/001_feedback.sql)
+- `render.yaml`: 화면과 API를 같은 주소에서 제공하는 Render 팀 시연 배포 설정
+- `.github/workflows/ci.yml`: Python/Node 및 PostgreSQL 검증
+
+단일 서비스로 실행하려면 아래 백엔드 실행 후 `http://127.0.0.1:8000/`에 접속합니다.
+기존 프론트 개발 서버도 계속 사용할 수 있습니다. 배포는 팀 기본 인증으로 보호하며,
+개인별 로그인·구독 설정 동기화는 별도 구현이 필요합니다.
+
 ## 프론트엔드 빠른 실행
 
 ```powershell
