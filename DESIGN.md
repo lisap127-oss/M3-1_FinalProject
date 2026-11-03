@@ -56,7 +56,8 @@ Default, hover, focus-visible, pending, disabled, and pressed (sent feedback use
 - Settings: keyword card (tag input that saves on edit, Enter/comma adds, Backspace removes, dashed suggestion chips), subscriber-ID form card, quiet email card, destructive clear action. Keywords are edited only here.
 - Features in preparation (일정·중요 메일, 저녁 리포트, 받는 시간과 채널): dashed `coming-card`s or a disabled fieldset with a grey `준비 중` badge. They describe what will appear and what it needs; they never show sample data or pretend to save.
 - Report switch: pill toggle `아침 브리핑 / 저녁 리포트` at the top of `#briefing` and `#evening`; both keep the `오늘의 브리핑` app-bar tab current.
-- Memory (내 취향): diverging preference bars (−5…+5, centre line) with a `덜 보고 싶어요 / 더 보고 싶어요` legend, and feedback history with like/dislike icons.
+- Results default to `키워드별` grouping (h2 per keyword with a count, the reader's keywords first, each article once, unmatched under 기타); the meta line ends with an estimated reading time. Feedback buttons read `좋아요 / 관심없음`.
+- Memory (내 취향): a `최근 7일 동안 달라진 취향` card first (score change per topic from the feedback history, with what it means for the next briefing), diverging preference bars (−5…+5, centre line) with a `덜 보고 싶어요 / 더 보고 싶어요` legend, and feedback history with like/dislike icons.
 - When an action hides or disables the focused control, focus moves to its result (results title, cancel, feedback status, generate button after failure).
 
 ## 9. Screens and responsive layout

@@ -118,7 +118,7 @@
           <div id="keyword-filters" class="segmented" role="group" aria-label="키워드별 보기"></div>
           <div class="toolbar-right">
             <label class="search"><span class="visually-hidden">뉴스 검색</span><span class="search-icon" aria-hidden="true" data-icon="search"></span><input type="search" id="search" placeholder="제목, 내용, 언론사 검색"></label>
-            <label class="sort"><span class="visually-hidden">정렬</span><select id="sort"><option value="importance">중요도순</option><option value="recent">최신순</option></select></label>
+            <label class="sort"><span class="visually-hidden">정렬</span><select id="sort"><option value="keyword">키워드별</option><option value="importance">중요도순</option><option value="recent">최신순</option></select></label>
           </div>
         </div>
         <p id="feedback-hint" class="feedback-hint" hidden></p>
@@ -160,7 +160,7 @@
         <article class="card coming-card">
           <span class="coming-icon" aria-hidden="true" data-icon="summary"></span>
           <h3>오늘 하루 요약</h3>
-          <p>오늘 읽은 브리핑과 남긴 좋아요·싫어요, 지나간 일정을 한눈에 정리해요.</p>
+          <p>오늘 읽은 브리핑과 남긴 좋아요·관심없음, 지나간 일정을 한눈에 정리해요.</p>
           <p class="coming-need">저녁 발송 기능 준비 후 제공</p>
         </article>
         <article class="card coming-card">
@@ -198,8 +198,8 @@
         </div>
       </section>
       <form id="settings-form" class="card form-card" novalidate aria-labelledby="userid-title">
-        <div class="section-head"><h2 id="userid-title">좋아요·싫어요 저장</h2><span class="optional">선택</span></div>
-        <p class="section-lead">구독자 ID를 넣으면 기사에 남긴 좋아요·싫어요가 저장되고, 다음 브리핑을 고를 때 반영돼요.</p>
+        <div class="section-head"><h2 id="userid-title">좋아요·관심없음 저장</h2><span class="optional">선택</span></div>
+        <p class="section-lead">구독자 ID를 넣으면 기사에 남긴 좋아요·관심없음이 저장되고, 다음 브리핑을 고를 때 반영돼요.</p>
         <div class="field">
           <label for="user-id">구독자 ID</label>
           <div class="inline-form">

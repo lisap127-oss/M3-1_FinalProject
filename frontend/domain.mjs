@@ -79,6 +79,44 @@ export function visibleNews(news, query, keyword, sort) {
     .sort((a, b) => sort === 'recent' ? (Date.parse(b.published_at) || 0) - (Date.parse(a.published_at) || 0) : b.importance_score - a.importance_score);
 }
 
+// Groups already-sorted articles under the reader's keywords, in the reader's keyword order.
+// An article matching several keywords appears once, under the first one; unmatched ones go last.
+export function groupByKeyword(news, keywords) {
+  const groups = new Map([...keywords, ''].map(k => [k, []]));
+  for (const n of news) {
+    const keyword = keywords.find(k => n.matched_keywords.includes(k)) ?? '';
+    groups.get(keyword).push(n);
+  }
+  return [...groups].filter(([, items]) => items.length);
+}
+
+// Rough reading time for titles and summaries, at about 500 Korean characters a minute.
+export function readingMinutes(news) {
+  const chars = news.reduce((sum, n) => sum + n.title.length + n.summary.length, 0);
+  return Math.max(1, Math.round(chars / 500));
+}
+
+// Per-topic preference change over the last `days`, from the server feedback history.
+// Uses scores rather than counting clicks, so the ±5 cap is respected.
+export function recentChanges(history, now = Date.now(), days = 7) {
+  const since = now - days * 24 * 60 * 60 * 1000;
+  const byTopic = new Map();
+  for (const h of history) {
+    const time = Date.parse(h.created_at);
+    if (!Number.isFinite(time) || time < since) continue;
+    const step = h.feedback_type === 'like' ? 1 : -1;
+    const start = Number.isInteger(h.previous_score) ? h.previous_score : h.new_score - step;
+    const entry = byTopic.get(h.topic) ?? {first: {time, start}, last: {time, score: h.new_score}, count: 0};
+    if (time < entry.first.time) entry.first = {time, start};
+    if (time >= entry.last.time) entry.last = {time, score: h.new_score};
+    entry.count++;
+    byTopic.set(h.topic, entry);
+  }
+  return [...byTopic].map(([topic, e]) => ({topic, change: e.last.score - e.first.start, count: e.count}))
+    .filter(c => c.change !== 0)
+    .sort((a, b) => Math.abs(b.change) - Math.abs(a.change) || b.change - a.change);
+}
+
 export function loadSettings(storage) {
   try {
     const value = JSON.parse(storage.getItem(STORAGE_KEY));

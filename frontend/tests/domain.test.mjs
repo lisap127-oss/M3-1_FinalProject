@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseNews, parseKeywords, visibleNews, validateSummary, loadSettings, loadSession, loadFeedback, serializeFeedback, safeUrl,
+import {parseNews, parseKeywords, visibleNews, groupByKeyword, readingMinutes, recentChanges, validateSummary, loadSettings, loadSession, loadFeedback, serializeFeedback, safeUrl,
   SESSION_KEY, FEEDBACK_KEY} from '../domain.mjs';
 
 const news = {id: '1', title: 'AI 소식', summary: '요약할 내용', source: '뉴스', url: 'https://example.com/1', published_at: '2026-10-25T09:00:00+09:00'};
@@ -67,4 +67,22 @@ test('sent feedback survives a reload; a pending request becomes an unknown outc
   assert.equal(loaded.get('["u","2","AI"]').tone, 'error');
   assert.equal(loaded.get('["u","2","AI"]').pending, undefined);
   assert.equal(loadFeedback({getItem: () => '{"bad":1}'}).size, 0);
+});
+test('articles group under the reader keywords once each, in keyword order, unmatched last', () => {
+  const ai = {...news, id: 'a', matched_keywords: ['AI', '스타트업']};
+  const startup = {...news, id: 's', matched_keywords: ['스타트업']};
+  const other = {...news, id: 'o', matched_keywords: []};
+  assert.deepEqual(groupByKeyword([other, startup, ai], ['스타트업', 'AI']), [['스타트업', [startup, ai]], ['', [other]]]);
+  assert.deepEqual(groupByKeyword([], ['AI']), []);
+});
+test('reading time is at least a minute', () => {
+  assert.equal(readingMinutes([news]), 1);
+  assert.equal(readingMinutes([{title: '', summary: 'a'.repeat(2000)}]), 4);
+});
+test('recent preference changes use scores within the window and respect the cap', () => {
+  const now = Date.parse('2026-11-08T00:00:00Z');
+  const h = (topic, type, prev, next, day) => ({topic, feedback_type: type, previous_score: prev, new_score: next, news_id: 'x', created_at: `2026-11-0${day}T00:00:00Z`});
+  const history = [h('AI', 'like', 4, 5, 7), h('AI', 'like', 5, 5, 6), h('AI', 'like', 3, 4, 5), h('스타트업', 'dislike', 0, -1, 6), {...h('경제', 'like', 0, 1, 1), created_at: '2026-10-31T00:00:00Z'}];
+  assert.deepEqual(recentChanges(history, now), [{topic: 'AI', change: 2, count: 3}, {topic: '스타트업', change: -1, count: 1}]);
+  assert.deepEqual(recentChanges([], now), []);
 });

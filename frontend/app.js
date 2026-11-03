@@ -1,5 +1,5 @@
 import {createApi} from './api.mjs';
-import {parseNews, parseKeywords, visibleNews, validateSummary, loadSettings, loadSession, loadFeedback, serializeFeedback, safeUrl,
+import {parseNews, parseKeywords, visibleNews, groupByKeyword, readingMinutes, recentChanges, validateSummary, loadSettings, loadSession, loadFeedback, serializeFeedback, safeUrl,
   STORAGE_KEY, SESSION_KEY, FEEDBACK_KEY, MAX_FILE_BYTES} from './domain.mjs';
 import {demoBriefing} from './demo.mjs';
 
@@ -9,7 +9,7 @@ let storage, session;
 try { storage = window.localStorage; } catch { /* Restricted browsers still work in memory. */ }
 try { session = window.sessionStorage; } catch { /* Same: the briefing just won't survive a reload. */ }
 const state = {settings: loadSettings(storage), news: [], results: [], excluded: [], mode: 'real',
-  hasResult: false, query: '', keyword: '', sort: 'importance', busy: false, generation: 0,
+  hasResult: false, query: '', keyword: '', sort: 'keyword', busy: false, generation: 0,
   feedback: loadFeedback(storage), memoryGeneration: 0, sourceName: '', composerOpen: false, ...loadSession(session)};
 let summaryController, memoryController;
 
@@ -241,8 +241,9 @@ function renderResults() {
   const demo = state.mode === 'demo';
   $('results-date').textContent = demo ? '화면 확인용 예시' : `${dateLabel(new Date(), {weekday: 'long'})} 브리핑`;
   $('results-title').textContent = demo ? `예시 기사 ${state.results.length}건` : `오늘 고른 기사 ${state.results.length}건`;
-  $('results-meta').textContent = demo ? '저장소의 테스트 기사 · 2026년 10월 13일' :
-    state.hasResult ? `뉴스 ${state.news.length}건 중 관심 키워드(${state.settings.keywords.join(', ')})에 맞는 기사만 골랐어요.` : '';
+  const reading = state.results.length ? ` 약 ${readingMinutes(state.results)}분이면 다 읽어요.` : '';
+  $('results-meta').textContent = demo ? `저장소의 테스트 기사 · 2026년 10월 13일.${reading}` :
+    state.hasResult ? `뉴스 ${state.news.length}건 중 관심 키워드(${state.settings.keywords.join(', ')})에 맞는 기사만 골랐어요.${reading}` : '';
   $('new-briefing').hidden = demo;
 
   const filterRoot = $('keyword-filters'); filterRoot.replaceChildren();
@@ -261,8 +262,8 @@ function renderResults() {
 
   const hint = $('feedback-hint'); hint.replaceChildren();
   hint.hidden = !state.results.length || demo;
-  if (state.settings.userId) hint.append('기사마다 좋아요·싫어요를 누르면 다음 브리핑을 고를 때 반영돼요.');
-  else hint.append('좋아요·싫어요를 남기려면 ', link('관심사 설정', '#settings'), '에서 구독자 ID를 넣어 주세요.');
+  if (state.settings.userId) hint.append('기사마다 좋아요·관심없음을 누르면 다음 브리핑을 고를 때 반영돼요.');
+  else hint.append('좋아요·관심없음을 남기려면 ', link('관심사 설정', '#settings'), '에서 구독자 ID를 넣어 주세요.');
 
   renderNewsList();
   $('excluded').hidden = !state.excluded.length;
@@ -273,7 +274,16 @@ function renderResults() {
 }
 function renderNewsList() {
   const news = visibleNews(state.results, state.query, state.keyword, state.sort);
-  $('news-list').replaceChildren(...news.map((n, i) => story(n, i)));
+  if (state.sort === 'keyword' && !state.keyword) {
+    // Same shape as the email briefing: the reader's keywords first, then any other matched keyword.
+    const order = [...new Set([...state.settings.keywords, ...state.results.flatMap(r => r.matched_keywords)])];
+    $('news-list').replaceChildren(...groupByKeyword(news, order).map(([keyword, items]) => {
+      const group = node('li', 'story-group');
+      const head = node('h2', 'group-title'); head.append(node('span', '', keyword || '기타'), node('span', 'group-count', `${items.length}건`));
+      const list = node('ol', 'story-list'); list.append(...items.map((n, i) => story(n, i)));
+      group.append(head, list); return group;
+    }));
+  } else $('news-list').replaceChildren(...news.map((n, i) => story(n, i)));
   const empty = $('empty-state'); empty.hidden = news.length > 0;
   if (news.length) return;
   if (state.results.length) {
@@ -366,8 +376,8 @@ function feedbackControls(news) {
   };
   const like = button('', 'vote', () => send('like'));
   const dislike = button('', 'vote', () => send('dislike'));
-  like.append(icon('up'), node('span', '', '좋아요')); dislike.append(icon('down'), node('span', '', '싫어요'));
-  like.setAttribute('aria-label', `${news.title} 좋아요`); dislike.setAttribute('aria-label', `${news.title} 싫어요`);
+  like.append(icon('up'), node('span', '', '좋아요')); dislike.append(icon('down'), node('span', '', '관심없음'));
+  like.setAttribute('aria-label', `${news.title} 좋아요`); dislike.setAttribute('aria-label', `${news.title} 관심없음`);
   control?.addEventListener('change', update); control?.addEventListener('input', update);
   if (control) row.append(control);
   row.append(like, dislike); wrap.append(row, status); update(); return wrap;
@@ -377,7 +387,7 @@ function feedbackControls(news) {
 
 function memoryPlaceholder() {
   const id = state.settings.userId;
-  $('memory-user').textContent = id ? `구독자 ID ${id}로 쌓인 취향이에요. 다음 브리핑을 고를 때 반영돼요.` : '기사에 남긴 좋아요·싫어요가 주제별 취향으로 쌓여요.';
+  $('memory-user').textContent = id ? `구독자 ID ${id}로 쌓인 취향이에요. 다음 브리핑을 고를 때 반영돼요.` : '기사에 남긴 좋아요·관심없음이 주제별 취향으로 쌓여요.';
   $('refresh-memory').hidden = !id;
   const empty = node('div', 'card empty-card');
   if (id) empty.append(node('h2', '', '기록을 불러와 확인하세요'), node('p', '', '다시 불러오기를 누르면 서버에 저장된 실제 기록을 조회해요.'));
@@ -428,12 +438,31 @@ async function loadMemory() {
     }
   }
 }
+const signed = n => `${n > 0 ? '+' : ''}${n}`;
+function trendCard(history) {
+  const card = node('section', 'card memory-card trend-card');
+  const head = node('div', 'card-head'); head.append(node('h2', '', '최근 7일 동안 달라진 취향'));
+  card.append(head);
+  const changes = recentChanges(history);
+  if (!changes.length) { card.append(node('p', 'empty-inline', '최근 7일 동안 취향 점수가 바뀐 주제가 없어요.')); return card; }
+  const list = node('ul', 'trend-list');
+  for (const {topic, change, count} of changes) {
+    const up = change > 0;
+    const li = node('li', 'trend-row');
+    const copy = node('div', 'trend-copy');
+    copy.append(node('strong', '', topic), node('p', '', `${up ? '다음 브리핑에서 더 우선적으로 골라요' : '다음 브리핑에서 덜 골라요'} · 좋아요·관심없음 ${count}번`));
+    li.append(icon(up ? 'up' : 'down', `history-icon ${up ? 'like' : 'dislike'}`), copy, node('span', `pref-score ${up ? '' : 'negative'}`, signed(change)));
+    list.append(li);
+  }
+  card.append(list);
+  return card;
+}
 function renderMemory(data) {
   const preferences = Object.entries(data.topic_preferences).sort((a, b) => b[1] - a[1]);
   const prefCard = node('section', 'card memory-card');
-  const prefHead = node('div', 'card-head'); prefHead.append(node('h2', '', '주제별 취향'), node('span', 'field-hint', '좋아요 +1 · 싫어요 −1'));
+  const prefHead = node('div', 'card-head'); prefHead.append(node('h2', '', '주제별 취향'), node('span', 'field-hint', '좋아요 +1 · 관심없음 −1'));
   prefCard.append(prefHead);
-  if (!preferences.length) prefCard.append(node('p', 'empty-inline', '아직 쌓인 취향이 없어요. 브리핑에서 좋아요·싫어요를 남겨 보세요.'));
+  if (!preferences.length) prefCard.append(node('p', 'empty-inline', '아직 쌓인 취향이 없어요. 브리핑에서 좋아요·관심없음을 남겨 보세요.'));
   else {
     const legend = node('p', 'pref-legend'); legend.setAttribute('aria-hidden', 'true');
     legend.append(node('span', '', '덜 보고 싶어요'), node('span', '', '더 보고 싶어요'));
@@ -443,7 +472,7 @@ function renderMemory(data) {
   // The server stores only article IDs; show the title when the article is in this tab's news.
   const titles = new Map(state.news.map(n => [n.id, n.title]));
   const historyCard = node('section', 'card memory-card');
-  const historyHead = node('div', 'card-head'); historyHead.append(node('h2', '', '좋아요·싫어요 기록'), node('span', 'field-hint', `${data.feedback_history.length}건`));
+  const historyHead = node('div', 'card-head'); historyHead.append(node('h2', '', '좋아요·관심없음 기록'), node('span', 'field-hint', `${data.feedback_history.length}건`));
   historyCard.append(historyHead);
   if (!data.feedback_history.length) historyCard.append(node('p', 'empty-inline', '아직 남긴 기록이 없어요.'));
   const list = node('ol', 'history-list');
@@ -452,12 +481,12 @@ function renderMemory(data) {
     const like = item.feedback_type === 'like';
     const badge = icon(like ? 'up' : 'down', `history-icon ${like ? 'like' : 'dislike'}`);
     const copy = node('div', 'history-copy');
-    copy.append(node('strong', '', `${item.topic} · ${like ? '좋아요' : '싫어요'}`), node('p', '', `${titles.get(item.news_id) ?? `기사 ${item.news_id}`} · 반영 후 ${item.topic} ${item.new_score > 0 ? '+' : ''}${item.new_score}`));
+    copy.append(node('strong', '', `${item.topic} · ${like ? '좋아요' : '관심없음'}`), node('p', '', `${titles.get(item.news_id) ?? `기사 ${item.news_id}`} · 반영 후 ${item.topic} ${item.new_score > 0 ? '+' : ''}${item.new_score}`));
     li.append(badge, copy, node('time', 'history-time', dateLabel(item.created_at, {hour: '2-digit', minute: '2-digit'})));
     list.append(li);
   }
   if (data.feedback_history.length) historyCard.append(list);
-  $('memory-content').replaceChildren(prefCard, historyCard);
+  $('memory-content').replaceChildren(trendCard(data.feedback_history), prefCard, historyCard);
 }
 
 // ---------- Dashboard ----------
@@ -495,7 +524,7 @@ function dashSteps() {
   const steps = [
     [state.settings.keywords.length > 0, '관심 키워드 정하기', '#settings'],
     [state.mode === 'real' && state.hasResult, '오늘의 브리핑 읽기', '#briefing'],
-    [Boolean(userId) && [...state.feedback.keys()].some(k => k.startsWith(prefix)), '좋아요·싫어요 남기기', userId ? '#briefing' : '#settings'],
+    [Boolean(userId) && [...state.feedback.keys()].some(k => k.startsWith(prefix)), '좋아요·관심없음 남기기', userId ? '#briefing' : '#settings'],
   ];
   if (steps.every(([done]) => done)) return null;
   const card = node('section', 'card steps-card'); card.setAttribute('aria-labelledby', 'steps-title');
@@ -525,6 +554,7 @@ function renderDashBriefing() {
   if (state.mode === 'real' && state.hasResult) {
     const n = state.results.length;
     card.replaceChildren(node('p', 'overline', '오늘의 브리핑'), title(n ? `관심 기사 ${n}건을 골랐어요` : '오늘은 관심 키워드에 맞는 기사가 없어요'), chips());
+    if (n) card.append(node('p', 'lead', `약 ${readingMinutes(state.results)}분이면 다 읽어요.`));
     const top = [...state.results].sort((a, b) => b.importance_score - a.importance_score).slice(0, 3);
     if (top.length) {
       const list = node('ol', 'top-list');
@@ -559,7 +589,7 @@ function renderDashBriefing() {
 async function loadDashPrefs(card) {
   const id = state.settings.userId;
   if (!id) {
-    card.append(node('p', 'empty-inline', '구독자 ID를 넣으면 좋아요·싫어요로 쌓인 내 취향을 보여 드려요.'), link('구독자 ID 넣기', '#settings', 'inline-link'));
+    card.append(node('p', 'empty-inline', '구독자 ID를 넣으면 좋아요·관심없음으로 쌓인 내 취향을 보여 드려요.'), link('구독자 ID 넣기', '#settings', 'inline-link'));
     return;
   }
   const status = node('p', 'empty-inline', '내 취향을 불러오고 있어요.'); status.setAttribute('role', 'status'); card.append(status);
@@ -569,8 +599,12 @@ async function loadDashPrefs(card) {
     if (!card.isConnected) return;
     const top = Object.entries(data.topic_preferences).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]) || b[1] - a[1]).slice(0, 4);
     status.remove();
-    if (!top.length) card.append(node('p', 'empty-inline', '아직 쌓인 취향이 없어요. 브리핑에서 좋아요·싫어요를 남겨 보세요.'));
-    else card.append(node('p', 'field-hint', `좋아요·싫어요 ${data.feedback_history.length}건이 반영됐어요.`), prefList(top));
+    if (!top.length) card.append(node('p', 'empty-inline', '아직 쌓인 취향이 없어요. 브리핑에서 좋아요·관심없음을 남겨 보세요.'));
+    else {
+      const changes = recentChanges(data.feedback_history).slice(0, 3);
+      card.append(node('p', 'field-hint', `좋아요·관심없음 ${data.feedback_history.length}건이 반영됐어요.`), prefList(top));
+      if (changes.length) card.append(node('p', 'trend-line', `최근 7일: ${changes.map(c => `${c.topic} ${signed(c.change)}`).join(', ')}`));
+    }
     card.append(link('내 취향 전체 보기', '#memory', 'inline-link'));
   } catch (error) {
     if (error.name === 'AbortError' || !card.isConnected) return;
@@ -596,7 +630,7 @@ function saveSettings(event) {
   const saved = saveToStorage();
   renderResults(); updateView(); memoryPlaceholder(); message('settings-error');
   notify(!saved ? '이 브라우저에 저장할 수 없어 이번 탭에서만 적용했어요.' :
-    userId ? '구독자 ID를 저장했어요. 이제 기사에 좋아요·싫어요를 남길 수 있어요.' : '구독자 ID를 지웠어요.', '#briefing', '브리핑으로 이동');
+    userId ? '구독자 ID를 저장했어요. 이제 기사에 좋아요·관심없음을 남길 수 있어요.' : '구독자 ID를 지웠어요.', '#briefing', '브리핑으로 이동');
   $('notice').querySelector('a').focus();
 }
 function route(focus = true) {
