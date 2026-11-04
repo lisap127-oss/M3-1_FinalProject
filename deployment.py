@@ -1,11 +1,8 @@
 """Single-origin team demo hosting. No secrets are sent to browser JavaScript."""
-import base64
-import binascii
 import os
-import secrets
 from pathlib import Path
 
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse
 
 ASSETS = {"/": "index.html", "/index.html": "index.html", "/styles.css": "styles.css",
           "/app.js": "app.js", "/api.mjs": "api.mjs", "/domain.mjs": "domain.mjs",
@@ -18,34 +15,16 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://cdn.jsde
 def validate_production_settings():
     if os.getenv("APP_ENV") != "production":
         return
-    required = ("GROQ_API_KEY", "SUPABASE_URL", "SUPABASE_SECRET_KEY",
-                "DEMO_USERNAME", "DEMO_PASSWORD")
+    required = ("GROQ_API_KEY", "SUPABASE_URL", "SUPABASE_SECRET_KEY")
     missing = [key for key in required if not os.getenv(key, "").strip()]
     if missing:
         raise RuntimeError("Missing production settings: " + ", ".join(missing))
-    if len(os.environ["DEMO_PASSWORD"]) < 16:
-        raise RuntimeError("DEMO_PASSWORD must contain at least 16 characters")
 
 
 def configure_deployment(app, frontend: Path):
     @app.middleware("http")
-    async def protect_demo(request, call_next):
-        username, password = os.getenv("DEMO_USERNAME"), os.getenv("DEMO_PASSWORD")
-        response = None
-        if request.url.path != "/health" and (username or password or os.getenv("APP_ENV") == "production"):
-            valid = False
-            try:
-                scheme, token = request.headers.get("authorization", "").split(" ", 1)
-                supplied_user, supplied_pass = base64.b64decode(token, validate=True).decode().split(":", 1)
-                valid = (scheme.lower() == "basic" and bool(username) and bool(password)
-                         and secrets.compare_digest(supplied_user.encode(), username.encode())
-                         and secrets.compare_digest(supplied_pass.encode(), password.encode()))
-            except (ValueError, UnicodeError, binascii.Error):
-                pass
-            if not valid:
-                response = Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="DayBrief team demo"'})
-        if response is None:
-            response = await call_next(request)
+    async def security_headers(request, call_next):
+        response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"

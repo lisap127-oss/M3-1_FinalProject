@@ -12,8 +12,6 @@ from pipelines.daily_briefing import summarize_in_batches
 @pytest.fixture(autouse=True)
 def local_environment(monkeypatch):
     monkeypatch.setenv('APP_ENV', 'development')
-    monkeypatch.delenv('DEMO_USERNAME', raising=False)
-    monkeypatch.delenv('DEMO_PASSWORD', raising=False)
 
 
 def test_static_assets_same_origin_and_no_source_exposure():
@@ -27,30 +25,25 @@ def test_static_assets_same_origin_and_no_source_exposure():
             assert client.get(path).status_code == 404
 
 
-def test_demo_protects_ui_docs_and_api_but_health_is_public(monkeypatch):
-    monkeypatch.setenv('DEMO_USERNAME', 'team')
-    monkeypatch.setenv('DEMO_PASSWORD', 'a-long-demo-password')
-    with TestClient(main.app) as client:
-        assert client.get('/health').status_code == 200
-        for path in ('/', '/docs', '/openapi.json', '/api/memory/u1', '/ready'):
-            assert client.get(path).status_code == 401
-        assert client.post('/api/feedback', json={}).status_code == 401
-        assert client.get('/', auth=('team', 'wrong')).status_code == 401
-        assert client.get('/', auth=('team', 'a-long-demo-password')).status_code == 200
-        assert client.get('/', headers={'Authorization': 'Basic %%%'}).status_code == 401
-
-
-def test_production_rejects_missing_or_weak_settings(monkeypatch):
+def test_production_demo_is_public_without_login(monkeypatch):
     monkeypatch.setenv('APP_ENV', 'production')
-    for key in ('GROQ_API_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'DEMO_USERNAME', 'DEMO_PASSWORD'):
+    for key in ('GROQ_API_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY'):
+        monkeypatch.setenv(key, 'placeholder')
+    with TestClient(main.app) as client:
+        for path in ('/health', '/', '/docs', '/openapi.json'):
+            assert client.get(path).status_code == 200
+        assert client.post('/api/feedback', json={}).status_code == 422
+        assert client.get('/').headers['x-content-type-options'] == 'nosniff'
+
+
+def test_production_requires_server_secrets(monkeypatch):
+    monkeypatch.setenv('APP_ENV', 'production')
+    for key in ('GROQ_API_KEY', 'SUPABASE_URL', 'SUPABASE_SECRET_KEY'):
         monkeypatch.setenv(key, 'placeholder')
     monkeypatch.delenv('SUPABASE_SECRET_KEY')
     with pytest.raises(RuntimeError, match='SUPABASE_SECRET_KEY'):
         validate_production_settings()
     monkeypatch.setenv('SUPABASE_SECRET_KEY', 'placeholder')
-    with pytest.raises(RuntimeError, match='at least 16'):
-        validate_production_settings()
-    monkeypatch.setenv('DEMO_PASSWORD', 'long-enough-demo-password')
     validate_production_settings()
 
 
