@@ -1,6 +1,7 @@
 
 import os
-from datetime import date, datetime, timezone
+from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from supabase import create_client, Client
+from deployment import configure_deployment, validate_production_settings
 
 from agents.news_summary_agent import generate_summary
 
@@ -25,7 +27,14 @@ supabase: Client | None = (
 )
 
 
+@asynccontextmanager
+async def lifespan(app):
+    validate_production_settings()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="DayBrief AI API",
     description="키워드 기반 AI 뉴스 브리핑 API",
     version="0.3.0",
@@ -131,55 +140,15 @@ def submit_feedback(request: FeedbackRequest):
         )
 
     try:
-        
-        response = (
-            db.table("user_preferences")
-            .select("score")
-            .eq("user_id", user_id)
-            .eq("topic", topic)
-            .execute()
-        )
-
-        previous_score = (
-            response.data[0]["score"]
-            if response.data
-            else 0
-        )
-
-
-        change = 1 if request.feedback_type == "like" else -1
-        new_score = max(-5, min(5, previous_score + change))
-        created_at = datetime.now(timezone.utc).isoformat()
-
-        db.table("user_preferences").upsert(
-            {
-                "user_id": user_id,
-                "topic": topic,
-                "score": new_score,
-                "updated_at": created_at,
-            },
-            on_conflict="user_id,topic",
+        response = db.rpc(
+            "record_feedback",
+            {"p_user_id": user_id, "p_news_id": request.news_id,
+             "p_topic": topic, "p_feedback_type": request.feedback_type},
         ).execute()
-
-        db.table("feedback_history").insert(
-            {
-                "user_id": user_id,
-                "news_id": request.news_id,
-                "topic": topic,
-                "feedback_type": request.feedback_type,
-                "previous_score": previous_score,
-                "new_score": new_score,
-                "created_at": created_at,
-            }
-        ).execute()
-
-        return {
-            "message": "피드백이 반영되었습니다.",
-            "user_id": user_id,
-            "topic": topic,
-            "previous_score": previous_score,
-            "preference_score": new_score,
-        }
+        result = response.data
+        if not isinstance(result, dict):
+            raise RuntimeError("Unexpected feedback RPC response")
+        return {"message": "피드백이 반영되었습니다.", **result}
 
     except HTTPException:
         raise
@@ -226,17 +195,10 @@ def get_user_memory(user_id: str):
 
 
 @app.get("/api/feedback/link")
-def feedback_link(
-    user_id: str,
-    news_id: str,
-    topic: str,
-    type: Literal["like", "dislike"],
-):
-    return submit_feedback(
-        FeedbackRequest(
-            user_id=user_id,
-            news_id=news_id,
-            topic=topic,
-            feedback_type=type,
-        )
-    )
+def feedback_link():
+    # Email scanners and browser prefetch must never mutate preferences.
+    raise HTTPException(status_code=405, detail="화면에서 POST /api/feedback으로 피드백을 보내세요.")
+
+
+# Mount after API routes so unknown /api paths do not become frontend pages.
+configure_deployment(app, ROOT / "frontend")

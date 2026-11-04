@@ -3,9 +3,14 @@
 #
 # 필요한 Repository secrets (Settings → Secrets and variables → Actions):
 #   GROQ_API_KEY        요약 모델 API 키
+#   SUPABASE_URL        DB 프로젝트 URL
+#   SUPABASE_SECRET_KEY DB 서버 전용 키
 #   GMAIL_ADDRESS       보내는 Gmail 주소
 #   GMAIL_APP_PASSWORD  위 계정에서 만든 앱 비밀번호
 #   SUBSCRIBERS_JSON    data/subscribers.json 내용 전체 (구독자 이메일은 공개되면 안 되므로 secret으로 관리)
+
+permissions:
+  contents: read
 
 name: Daily Briefing
 
@@ -44,12 +49,14 @@ jobs:
       - name: Check secrets
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           SUBSCRIBERS_JSON: ${{ secrets.SUBSCRIBERS_JSON }}
         run: |
           missing=0
-          for name in GROQ_API_KEY GMAIL_ADDRESS GMAIL_APP_PASSWORD SUBSCRIBERS_JSON; do
+          for name in GROQ_API_KEY SUPABASE_URL SUPABASE_SECRET_KEY GMAIL_ADDRESS GMAIL_APP_PASSWORD SUBSCRIBERS_JSON; do
             if [ -z "${!name}" ]; then echo "::error::Secret $name 이(가) 설정되지 않았습니다."; missing=1; fi
           done
           exit $missing
@@ -62,8 +69,10 @@ jobs:
       - name: Start API server
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
-          nohup uvicorn main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          nohup uvicorn main:app --no-access-log --host 127.0.0.1 --port 8000 > server.log 2>&1 &
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8000/health > /dev/null; then echo "API 서버 준비 완료"; exit 0; fi
             sleep 1

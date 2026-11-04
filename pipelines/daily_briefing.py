@@ -78,6 +78,18 @@ def summarize_with_split(
         return [request_summary(user_id, keywords, batch)]
     except httpx.ConnectError:
         raise  # 서버가 꺼져 있으면 나눠도 소용없음
+    except httpx.HTTPStatusError as e:
+        # Configuration/auth/rate-limit errors are not caused by batch size.
+        if e.response.status_code != 502:
+            raise
+        if len(batch) == 1:
+            errors.append(e)
+            return []
+        mid = len(batch) // 2
+        return (
+            summarize_with_split(user_id, keywords, batch[:mid], errors, label)
+            + summarize_with_split(user_id, keywords, batch[mid:], errors, label)
+        )
     except Exception as e:
         if len(batch) == 1:
             errors.append(e)
