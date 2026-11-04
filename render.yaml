@@ -18,7 +18,3 @@ services:
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
-      - key: DEMO_USERNAME
-        sync: false
-      - key: DEMO_PASSWORD
-        sync: false
