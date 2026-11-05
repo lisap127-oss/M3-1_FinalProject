@@ -107,3 +107,27 @@ def test_balance_by_keyword_prevents_domination():
     ids = {p["id"] for p in picked}
     assert len(picked) == 3
     assert "st-1" in ids  # 오래됐어도 다른 키워드 기사가 밀려나지 않음
+
+
+def test_fetch_all_feeds_skips_slow_or_broken_feed(monkeypatch):
+    """피드 하나가 시간 초과돼도 나머지 피드 기사는 그대로 수집된다."""
+    import httpx
+    import collectors.rss_news as rss
+
+    feeds = [
+        {"source": "느린뉴스", "category": "전체", "url": "https://slow.example.com/rss"},
+        {"source": "테스트뉴스", "category": "전체", "url": "https://ok.example.com/rss"},
+    ]
+
+    def fake_get(url, **kwargs):
+        assert kwargs["timeout"] == rss.FETCH_TIMEOUT
+        if "slow" in url:
+            raise httpx.ReadTimeout("timed out")
+        return httpx.Response(200, content=SAMPLE_RSS.encode(), request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(rss, "load_feeds", lambda: feeds)
+    monkeypatch.setattr(rss.httpx, "get", fake_get)
+
+    items = rss.fetch_all_feeds()
+    assert len(items) == 4
+    assert {i["source"] for i in items} == {"테스트뉴스"}
