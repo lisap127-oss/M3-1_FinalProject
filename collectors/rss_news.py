@@ -13,11 +13,13 @@ import hashlib
 import html
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import feedparser
+import httpx
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -26,6 +28,7 @@ DEFAULT_OUT = ROOT / "data" / "collected_news.json"
 
 KST = timezone(timedelta(hours=9))
 USER_AGENT = "DayBriefBot/0.1 (student project)"
+FETCH_TIMEOUT = 10  # 초. 응답 없는 피드 하나 때문에 웹 요청 전체가 멈추지 않도록 한다.
 SUMMARY_MAX_LEN = 300
 
 
@@ -126,12 +129,17 @@ def parse_entries(parsed, source: str) -> list[dict]:
 
 
 def fetch_feed(feed: dict) -> list[dict]:
-    parsed = feedparser.parse(feed["url"], agent=USER_AGENT)
-    status = getattr(parsed, "status", None)
+    # feedparser가 직접 내려받으면 timeout을 줄 수 없어서 httpx로 받은 뒤 파싱한다.
+    response = httpx.get(
+        feed["url"],
+        headers={"User-Agent": USER_AGENT},
+        timeout=FETCH_TIMEOUT,
+        follow_redirects=True,
+    )
+    response.raise_for_status()
+    parsed = feedparser.parse(response.content)
     if parsed.bozo and not parsed.entries:
         raise RuntimeError(f"파싱 실패: {parsed.get('bozo_exception')}")
-    if status and status >= 400:
-        raise RuntimeError(f"HTTP {status}")
     return parse_entries(parsed, feed["source"])
 
 
@@ -198,17 +206,22 @@ def strip_internal(items: list[dict]) -> list[dict]:
     return [{k: v for k, v in it.items() if not k.startswith("_")} for it in items]
 
 
+def _fetch_feed_safely(feed: dict) -> list[dict]:
+    try:
+        items = fetch_feed(feed)
+        print(f"[OK]   {feed['source']}({feed['category']}): {len(items)}건")
+        return items
+    except Exception as e:  # 피드 하나가 실패해도 나머지는 계속 수집
+        print(f"[FAIL] {feed['source']}({feed['category']}) {feed['url']} - {type(e).__name__}: {e}")
+        return []
+
+
 def fetch_all_feeds() -> list[dict]:
-    """등록된 모든 RSS 피드를 가져온다. 피드 하나가 실패해도 나머지는 계속 수집한다."""
-    all_items = []
-    for feed in load_feeds():
-        try:
-            items = fetch_feed(feed)
-            print(f"[OK]   {feed['source']}({feed['category']}): {len(items)}건")
-            all_items.extend(items)
-        except Exception as e:
-            print(f"[FAIL] {feed['source']}({feed['category']}) {feed['url']} - {e}")
-    return all_items
+    """등록된 모든 RSS 피드를 동시에 가져온다. 결과 순서는 feeds.json 순서를 따른다."""
+    feeds = load_feeds()
+    with ThreadPoolExecutor(max_workers=min(8, len(feeds) or 1)) as pool:
+        results = list(pool.map(_fetch_feed_safely, feeds))
+    return [item for items in results for item in items]
 
 
 def select_news(

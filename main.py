@@ -12,6 +12,7 @@ from supabase import create_client, Client
 from deployment import configure_deployment, validate_production_settings
 
 from agents.news_summary_agent import generate_summary
+from collectors.news_api import router as news_router
 
 
 ROOT = Path(__file__).resolve().parent
@@ -199,6 +200,9 @@ def feedback_link():
     # Email scanners and browser prefetch must never mutate preferences.
     raise HTTPException(status_code=405, detail="화면에서 POST /api/feedback으로 피드백을 보내세요.")
 
+
+# 뉴스 수집 API (자동화/데이터 파트): GET /api/news
+app.include_router(news_router)
 
 # Mount after API routes so unknown /api paths do not become frontend pages.
 configure_deployment(app, ROOT / "frontend")

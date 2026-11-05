@@ -36,6 +36,23 @@
 
 피드는 실행당 한 번만 수집하고, ②~④를 구독자마다 반복한다. 한 구독자가 실패해도 나머지 구독자는 계속 처리한다.
 
+### 웹 화면 흐름 (GET /api/news)
+
+```
+[사이트에서 "브리핑 만들기"]
+        │
+        ▼
+GET /api/news?keywords=AI,스타트업   ← ①·② 를 서버에서 실행 (피드 10분 캐시)
+        │  NewsItem 최대 30건
+        ▼
+POST /api/summarize (5건씩)          ← ③
+        │
+        ▼
+화면에 브리핑 표시 · 좋아요/관심없음 → POST /api/feedback
+```
+
+메일 파이프라인과 같은 수집 코드(`collectors/rss_news.py`)를 사용하므로, 메일과 사이트에서 같은 기준으로 기사가 선택된다.
+
 ## 3. 기술 선정 및 의사결정
 
 ### 3.1. 뉴스 소스: 네이버 검색 API → 언론사 RSS
@@ -70,11 +87,11 @@
 
 15건을 한 번에 요청하면 백엔드에서 502가 발생했다. 원인은 Summary Agent의 `max_completion_tokens=4096` 한도에 **gpt-oss-20b의 추론 토큰까지 포함**되어, 기사가 많으면 응답 JSON이 중간에 잘리는 것이었다(5건으로 줄이면 성공).
 
-백엔드 코드를 수정하지 않고 파이프라인에서 해결했다.
+백엔드 코드를 수정하지 않고 파이프라인에서 먼저 우회했고, 이후 백엔드에서 한도를 `8192`로 올리고 `reasoning_effort="low"`를 적용했다. 분할 요청은 안전장치로 유지한다.
 
 - 기사를 5건씩 나눠 요청하고 결과를 병합한다.
 - 그래도 실패한 묶음은 반으로 나눠 재시도하고, 1건까지 줄여도 실패한 기사만 제외한다.
-- 요약 서버가 꺼져 있는 경우(연결 실패)는 재시도하지 않고 바로 알린다.
+- 요약 서버가 꺼져 있는 경우(연결 실패)나 401·429·500 같은 설정 오류는 나눠도 해결되지 않으므로 재시도하지 않는다. (배포/QA 파트 수정)
 
 매칭 기사가 없으면 LLM을 호출하지 않고 "새 뉴스 없음" 안내만 발송해 API 사용량을 줄인다.
 
@@ -101,12 +118,14 @@
 |---|---|
 | `collectors/rss_news.py` | RSS 수집, 텍스트 정리, 키워드 필터링, 중복 제거 |
 | `collectors/feeds.json` | 수집할 RSS 피드 목록 |
+| `collectors/news_api.py` | 웹 화면용 뉴스 수집 API (`GET /api/news`) |
 | `pipelines/daily_briefing.py` | 파이프라인 본체 (구독자 처리, 요약 요청 분할, 발송) |
 | `pipelines/email_sender.py` | 메일 본문(HTML·텍스트) 생성 및 Gmail SMTP 발송 |
 | `data/subscribers.example.json` | 구독자 목록 예시 (실제 파일은 Git 제외) |
 | `.github/workflows/daily-briefing.yml` | 매일 자동 실행 워크플로우 |
 | `tests/test_rss_collector.py` | 수집기 테스트 |
 | `tests/test_daily_briefing.py` | 파이프라인·메일 테스트 |
+| `tests/test_news_api.py` | 뉴스 수집 API 테스트 |
 
 ## 5. 데이터 형식
 
@@ -187,6 +206,37 @@ python -m pipelines.daily_briefing                     # 실제 발송
 | `--max N` | 구독자당 요약할 최대 기사 수 | 15 |
 | `--batch-size N` | 요약 API 1회당 보낼 기사 수 | 5 |
 
+### 6.4. 웹 뉴스 수집 API
+
+```bash
+uvicorn main:app
+curl "http://127.0.0.1:8000/api/news?keywords=AI,스타트업"
+```
+
+| 파라미터 | 설명 | 기본값 / 범위 |
+|---|---|---|
+| `keywords` | 쉼표로 구분한 관심 키워드 (필수) | 최대 20개, 각 100자 |
+| `hours` | 최근 N시간 이내 기사 | 24 (1~72) |
+| `max` | 최대 기사 수 | 30 (1~30) |
+
+응답 예시:
+
+```json
+{
+  "keywords": ["AI", "스타트업"],
+  "news": [{"id": "news-…", "title": "…", "summary": "…", "source": "연합뉴스", "url": "https://…", "published_at": "2026-11-05T09:00:00+09:00"}],
+  "keyword_counts": {"AI": 26, "스타트업": 4},
+  "collected_at": "2026-11-05T19:00:00+09:00",
+  "cached": false
+}
+```
+
+- `news`는 그대로 `POST /api/summarize`의 `news`로 보낼 수 있다.
+- RSS 피드는 10분 동안 캐시한다. 연속 요청 시 언론사 서버에 반복 요청하지 않는다.
+- 피드는 동시에 받아오며, 피드마다 10초 시간 제한이 있다. 일부 피드가 실패해도 나머지로 응답한다.
+- 모든 피드가 실패하면 `503`을 반환하고, 실패 결과는 캐시하지 않는다.
+- 잘못된 입력(키워드 없음·21개 이상 등)은 RSS를 수집하지 않고 `422`를 반환한다.
+
 ## 7. 자동 실행 (GitHub Actions)
 
 - 실행 시각: 매일 07:30 KST (cron `30 22 * * *`, UTC 기준). GitHub 사정으로 지연될 수 있다.
@@ -207,17 +257,18 @@ python -m pipelines.daily_briefing                     # 실제 발송
 네트워크, LLM, SMTP는 모두 모의 처리하여 API 키나 인터넷 없이 실행된다.
 
 ```bash
-python -m pytest tests/test_rss_collector.py tests/test_daily_briefing.py tests/test_api.py tests/test_agent_errors.py
+python -m pytest tests/test_api.py tests/test_agent_errors.py tests/test_rss_collector.py tests/test_daily_briefing.py tests/test_deployment.py tests/test_news_api.py
 ```
 
-**결과: 30 passed** (자동화 파트 20개 + 기존 백엔드 10개)
+**결과: 56 passed** (자동화 파트 34개 포함)
 
 | 구분 | 검증 내용 |
 |---|---|
-| 수집기 (7) | HTML·엔티티 제거, `NewsItem` 스키마 호환, GMT→KST 변환, 영문 단어 경계 매칭, 여러 단어 키워드, 24시간 필터·중복 제거, 추적 파라미터 제거, 키워드 균형 선택 |
+| 수집기 (8) | 피드 시간 초과 시 나머지 피드 유지, HTML·엔티티 제거, `NewsItem` 스키마 호환, GMT→KST 변환, 영문 단어 경계 매칭, 여러 단어 키워드, 24시간 필터·중복 제거, 추적 파라미터 제거, 키워드 균형 선택 |
 | 메일 (3) | 제목 형식, HTML 이스케이프, AI 생성 안내 문구, UTF-8 charset, 텍스트 버전, 뉴스 없음 안내 |
 | 파이프라인 (6) | 요약 후 발송, 기사 없으면 LLM 미호출, 한 구독자 실패 시 나머지 계속, dry-run 파일 저장, 5건 단위 분할·병합, 실패 묶음 분할 재시도 |
 | 발송·보안 (4) | 587 포트 재시도, 앱 비밀번호 공백 제거, 비밀번호 오류 시 명확한 메시지, 로그 이메일 마스킹 |
+| 뉴스 API (13) | NewsItem 형식·요약 API 호환, 키워드별 건수, 10분 캐시·만료, 전체 실패 시 503·미캐시, 최대 건수, 잘못된 입력 422(6종), 중복 키워드 병합 |
 
 실제 RSS 수집(8개 피드 정상)과 Gmail 실제 발송은 로컬에서 별도로 확인했다.
 
@@ -242,8 +293,8 @@ python -m pytest tests/test_rss_collector.py tests/test_daily_briefing.py tests/
 
 ## 11. 한계 및 향후 과제
 
-- [ ] 메일 속 기사별 👍/👎 링크 → `/api/feedback` 연결 (백엔드 GET 엔드포인트와 서비스 배포 필요)
-- [ ] 선호도·피드백 데이터베이스 영구 저장 (현재 백엔드 서버 메모리 기반)
+- [ ] 사이트 "브리핑 만들기"에서 `GET /api/news` 호출 (프론트엔드 연동, 현재는 뉴스 파일 업로드 방식)
+- [ ] 메일 속 기사에서 사이트로 이동하는 링크 (피드백은 사이트에서 POST로 저장 — 메일 스캐너의 오작동을 막기 위해 GET 피드백은 백엔드에서 막혀 있음)
 - [ ] 구독 신청 폼 및 동의 절차 (현재는 `subscribers.json` 수동 관리)
 - [ ] 언론사가 다르게 쓴 같은 사건 기사의 중복 제거 정확도 개선
 - [ ] 배포 환경에서 SMTP 포트가 막히는 경우 HTTP 기반 메일 API(Resend 등) 전환 검토
@@ -256,6 +307,8 @@ python -m pytest tests/test_rss_collector.py tests/test_daily_briefing.py tests/
 - [x] 요약 API 연동 (분할 요청 및 재시도)
 - [x] 이메일 브리핑 생성 및 실제 발송 확인
 - [x] GitHub Actions 일일 자동 실행 워크플로우
-- [x] 자동 테스트 20개 작성 (전체 30개 통과)
+- [x] 웹 뉴스 수집 API (`GET /api/news`)
+- [x] 자동 테스트 34개 작성 (전체 56개 통과)
 - [ ] Repository secrets 등록 및 Actions 실제 실행 확인
-- [ ] 피드백 링크 연동
+- [ ] 사이트 프론트엔드에서 뉴스 수집 API 사용
+- [ ] 배포 서버에서 실제 RSS 수집 확인
