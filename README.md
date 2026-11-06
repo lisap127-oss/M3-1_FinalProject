@@ -231,6 +231,6 @@ python -m pipelines.daily_briefing              # 실제 발송
 ## 링크
 
 - 배포 URL <https://daybrief-demo.onrender.com/>
-- [발표 자료](dosc/presentation.md) / pptx 파일도 확인 가능  
+- 발표 자료: [MD](dosc/presentation_markdown.md) / [PPT](docs/presentation.pptx)  
 기존 문서의 서버 메모리 저장 설명과 점수 예시는 이전 설계입니다.
 최신 API는 Supabase와 -5~5 선호도 점수를 사용합니다.
