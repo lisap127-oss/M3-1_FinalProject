@@ -19,7 +19,7 @@
 |---|---|---|
 | 박연수 | PM/기획 | 프로젝트 총괄, 일정 관리, 요구사항 정의, 사용자 테스트 설계, 발표 자료 제작 |
 | 백민서 | AI/Backend LLM | 프롬프트 설계, 요약 Agent 개발, Long-term Memory 구조 설계, API 서버 구축 |
-| 김의종 | 자동화/데이터 | n8n 자동화 워크플로우 구축, 뉴스·메일·캘린더 API 연동, 데이터 수집 파이프라인 |
+| 김의종 | 자동화/데이터 | RSS 뉴스 수집 파이프라인·뉴스 수집 API 구축, 이메일 브리핑 자동 발송(GitHub Actions) |
 | 김준오 | Frontend/UX | 사용자 설정 페이지(관심사·발송시간) 구현, 대시보드 UI, 피드백 수집 인터페이스 |
 | 조영경 | 배포/QA | 배포 환경 구축(Vercel·Render), DB 관리(Supabase), 테스트·QA, GitHub 관리 |
 
@@ -38,7 +38,7 @@
 |---|---|
 | AI | OpenAI API (쓰임에 따라 Gemini, Claude 계열 API도 병행 가능성 있음) |
 | Backend | Python(FastAPI), Supabase(PostgreSQL + pgvector) |
-| 자동화 | n8n (뉴스 수집·메신저 발송) |
+| 자동화 | Python(feedparser) RSS 수집, GitHub Actions 일일 실행, Gmail SMTP 이메일 발송 |
 | Frontend | Next.js, TailwindCSS |
 | 배포 | Vercel(FE), Render(BE), GitHub Actions(CI/CD) |
 
@@ -46,10 +46,16 @@
 
 - `main.py`: FastAPI 서버, 뉴스 요약·피드백·기억 조회 API
 - `agents/`, `prompts/`: Groq 기반 뉴스 요약과 선정 기준
-- `collectors/`: RSS 뉴스 수집 CLI
+- `collectors/`: 언론사 RSS 뉴스 수집(CLI) 및 웹용 뉴스 수집 API(`GET /api/news`)
 - `pipelines/`: 구독자별 요약 및 Gmail 발송
 - `frontend/`: 뉴스 브리핑·관심사·피드백 기록 화면
 - `tests/`: 기존 백엔드 및 파이프라인 테스트
+
+## 자동화/데이터 (김의종 담당)
+
+- [뉴스 수집 및 브리핑 자동화 상세](docs/automation_pipeline.md): 흐름, 기술 선정 이유, 실행 방법, 문제 해결 기록
+- `.github/workflows/daily-briefing.yml`: 매일 07:30(KST) 뉴스 수집 → AI 요약 → 이메일 발송
+- Google Calendar 일정 요약, 중요 메일 선별은 확장 기능으로 이번 범위에서 제외
 
 ## 배포·DB·QA (조영경 담당)
 
