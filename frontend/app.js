@@ -12,6 +12,8 @@ const state = {settings: loadSettings(storage), news: [], results: [], excluded:
   hasResult: false, query: '', keyword: '', sort: 'keyword', busy: false, generation: 0,
   feedback: loadFeedback(storage), memoryGeneration: 0, sourceName: '', composerOpen: false, ...loadSession(session)};
 let summaryController, memoryController;
+// News collected by the server (GET /api/news). Anything else came from the test tools' file upload.
+const RSS_SOURCE = '언론사 RSS';
 
 // Static, trusted icon markup only. Never interpolate user or server text here.
 const ICONS = {
@@ -162,41 +164,69 @@ function updateView() {
   $('demo-banner').hidden = !demo;
   $('back-to-results').hidden = !(state.composerOpen && state.hasResult);
 
-  $('dropzone').hidden = hasNews;
-  $('file-row').hidden = !hasNews;
+  const uploaded = hasNews && state.sourceName !== RSS_SOURCE;
+  $('dropzone').hidden = uploaded;
+  $('file-row').hidden = !uploaded;
   $('file-name').textContent = state.sourceName;
   $('file-count').textContent = `기사 ${state.news.length}건`;
 
   const status = $('news-status');
-  status.dataset.state = hasKeywords && hasNews ? 'ready' : 'empty';
+  status.dataset.state = hasKeywords ? 'ready' : 'empty';
   if (!hasKeywords) status.replaceChildren(node('strong', '', '관심 키워드를 먼저 정해 주세요'), node('span', '', '키워드에 맞는 기사만 골라 드려요. '), link('키워드 정하기', '#settings'));
-  else if (!hasNews) status.replaceChildren(node('strong', '', '아직 웹에서 볼 오늘의 뉴스가 없어요'), node('span', '', '예시 브리핑으로 어떤 모습인지 먼저 둘러보세요.'));
-  else status.replaceChildren(node('strong', '', `오늘의 뉴스 ${state.news.length}건이 준비됐어요`), node('span', '', '관심 키워드에 맞는 기사만 골라 요약해요.'));
+  else if (uploaded) status.replaceChildren(node('strong', '', `불러온 뉴스 ${state.news.length}건으로 만들어요`), node('span', '', '테스트 도구에서 불러온 파일의 기사만 사용해요.'));
+  else status.replaceChildren(node('strong', '', '오늘의 뉴스를 바로 모아 드려요'), node('span', '', '언론사 기사 중 관심 키워드에 맞는 최근 24시간 기사를 모아 요약해요.'));
 
-  // Without news there is nothing to generate, so the example becomes the main action.
-  $('generate').hidden = !hasNews;
-  $('generate').disabled = state.busy || !hasKeywords || !hasNews;
-  $('show-demo').className = hasNews ? 'text-button' : 'secondary';
-  $('generate-hint').textContent = !hasNews ? '' : !hasKeywords ? '관심 키워드를 정하면 만들 수 있어요.' :
-    `기사 수에 따라 1~3분 정도 걸려요.${state.settings.userId ? ' 내 취향도 함께 반영해요.' : ''}`;
+  // Without keywords there is nothing to look for, so the example becomes the main action.
+  $('generate').hidden = false;
+  $('generate').disabled = state.busy || !hasKeywords;
+  $('show-demo').className = hasKeywords ? 'text-button' : 'secondary';
+  $('generate-hint').textContent = !hasKeywords ? '관심 키워드를 정하면 만들 수 있어요.' :
+    `기사를 모으고 요약하는 데 1~3분 정도 걸려요.${state.settings.userId ? ' 내 취향도 함께 반영해요.' : ''}`;
 }
 
 async function generate() {
-  if (state.busy || state.mode !== 'real' || !state.news.length || !state.settings.keywords.length) return;
+  if (state.busy || !state.settings.keywords.length) return;
+  // A file from the test tools is used as is; otherwise fresh news is collected on every run.
+  const useUploaded = state.mode === 'real' && state.news.length > 0 && state.sourceName !== RSS_SOURCE;
+  state.mode = 'real';
   resetResults();
   state.busy = true;
   summaryController = new AbortController();
   const signal = summaryController.signal;
   const run = state.generation;
   const snapshot = {user_id: state.settings.userId || null, user_keywords: [...state.settings.keywords]};
-  const batches = [];
-  for (let i = 0; i < state.news.length; i += 5) batches.push(state.news.slice(i, i + 5));
-  setProgress(0, batches.length);
-  updateView(); $('cancel-summary').focus();
+  $('progress-title').textContent = useUploaded ? '뉴스를 요약하고 있어요' : '오늘의 뉴스를 모으고 있어요';
+  $('progress-bar').style.width = '6%';
+  $('loading-progress').textContent = useUploaded ? '요약을 시작해요.' : `언론사 기사에서 ${snapshot.user_keywords.join(', ')} 관련 기사를 찾고 있어요.`;
+  updateView(); renderDashBriefing(); $('cancel-summary').focus();
   $('results').setAttribute('aria-busy', 'true');
   let succeeded = 0;
   const failed = [];
   try {
+    if (!useUploaded) {
+      let collected;
+      try {
+        collected = (await api.news(snapshot.user_keywords, signal)).news;
+        if (run !== state.generation) return;
+        state.news = collected?.length ? parseNews(JSON.stringify({news: collected})) : [];
+        state.sourceName = RSS_SOURCE;
+      } catch (error) {
+        if (signal.aborted || run !== state.generation) return;
+        message('summary-error-compose', `오늘의 뉴스를 모으지 못했어요. ${error.message}`);
+        announce('뉴스를 모으지 못했어요.');
+        return;
+      }
+      if (!state.news.length) {
+        // Nothing matched in the last 24 hours: show an empty briefing instead of calling the AI.
+        state.hasResult = true;
+        announce('최근 24시간 동안 관심 키워드에 맞는 기사가 없어요.');
+        return;
+      }
+      $('progress-title').textContent = '뉴스를 요약하고 있어요';
+    }
+    const batches = [];
+    for (let i = 0; i < state.news.length; i += 5) batches.push(state.news.slice(i, i + 5));
+    setProgress(0, batches.length);
     for (const [index, batch] of batches.entries()) {
       try {
         const raw = await api.summarize({...snapshot, news: batch}, signal);
@@ -576,15 +606,9 @@ function renderDashBriefing() {
       actions(link('키워드 직접 정하기', '#settings', 'secondary')));
     return;
   }
-  if (state.news.length) {
-    card.replaceChildren(node('p', 'overline', '오늘의 브리핑'), title('오늘의 브리핑을 만들어 보세요'),
-      node('p', 'lead', `오늘의 뉴스 ${state.news.length}건 중 관심 키워드에 맞는 기사만 골라 드려요.`), chips(),
-      actions(button('브리핑 만들기', 'primary', () => goToBriefing(generate)), link('키워드 바꾸기', '#settings', 'secondary')));
-    return;
-  }
-  card.replaceChildren(node('p', 'overline', '오늘의 브리핑'), title('아직 오늘의 뉴스가 준비되지 않았어요'),
-    node('p', 'lead', '웹에서 볼 뉴스가 준비되면 이곳에서 바로 브리핑을 만들 수 있어요. 예시로 어떤 모습인지 먼저 볼 수 있어요.'), chips(),
-    actions(button('예시 브리핑 보기', 'primary', () => goToBriefing(openDemo)), link('키워드 바꾸기', '#settings', 'secondary')));
+  card.replaceChildren(node('p', 'overline', '오늘의 브리핑'), title('오늘의 브리핑을 만들어 보세요'),
+    node('p', 'lead', '언론사 뉴스 중 관심 키워드에 맞는 기사만 모아 요약해 드려요.'), chips(),
+    actions(button('브리핑 만들기', 'primary', () => goToBriefing(generate)), link('키워드 바꾸기', '#settings', 'secondary')));
 }
 async function loadDashPrefs(card) {
   const id = state.settings.userId;

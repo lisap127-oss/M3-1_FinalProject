@@ -27,3 +27,20 @@ test('cancelling a summary propagates cancellation and does not retry', async ()
   const request = api.summarize({news: []}, controller.signal); controller.abort();
   await assert.rejects(request, error => error.name === 'AbortError'); assert.equal(calls, 1);
 });
+
+test('news collection encodes Korean keywords with URLSearchParams and uses GET', async () => {
+  const calls = [];
+  const api = createApi(async (path, options) => { calls.push({path, options}); return Response.json({news: []}); });
+  await api.news(['AI', '스타트업', '개발자 채용']);
+  assert.equal(calls[0].options.method, 'GET');
+  assert.equal(calls[0].options.body, undefined);
+  const url = new URL(calls[0].path, 'http://localhost');
+  assert.equal(url.pathname, '/api/news');
+  assert.equal(url.searchParams.get('keywords'), 'AI,스타트업,개발자 채용');
+  assert.equal(url.searchParams.get('max'), '30');
+  assert.ok(!/[가-힣]/.test(calls[0].path), 'raw Korean must not appear in the request URL');
+});
+test('news collection failures keep the server detail', async () => {
+  const api = createApi(async () => Response.json({detail: '뉴스 피드를 가져오지 못했어요.'}, {status: 503}));
+  await assert.rejects(api.news(['AI']), error => error instanceof ApiError && error.status === 503 && error.message.includes('뉴스 피드'));
+});
