@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: '24'
       - run: pip install -r requirements.txt
-      - run: python -m pytest tests/test_api.py tests/test_agent_errors.py tests/test_rss_collector.py tests/test_daily_briefing.py tests/test_deployment.py tests/test_news_api.py -q
+      - run: python -m pytest tests/test_api.py tests/test_agent_errors.py tests/test_rss_collector.py tests/test_daily_briefing.py tests/test_deployment.py tests/test_news_api.py tests/test_keyword_settings.py -q
       - run: npm --prefix frontend run check
       - run: npm --prefix frontend test
       - run: python -m unittest discover -s frontend/tests -p test_server.py -v
@@ -39,4 +39,5 @@ jobs:
       - uses: actions/checkout@v4
       - run: psql -v ON_ERROR_STOP=1 -c 'create role anon; create role authenticated; create role service_role bypassrls;'
       - run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/001_feedback.sql
+      - run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/002_keyword_settings.sql
       - run: psql -v ON_ERROR_STOP=1 -f supabase/tests/feedback.sql
