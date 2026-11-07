@@ -34,6 +34,8 @@ export function createApi(fetcher = (...args) => fetch(...args)) {
   }
   return {
     health: () => request('/health', {timeout: 5000}),
+    // Keywords go through URLSearchParams: raw Korean in a URL is rejected by the server.
+    news: (keywords, signal) => request(`/api/news?${new URLSearchParams({keywords: keywords.join(','), max: '30'})}`, {signal, timeout: 60000}),
     summarize: (body, signal) => request('/api/summarize', {method: 'POST', body, signal}),
     feedback: body => request('/api/feedback', {method: 'POST', body, timeout: 20000}),
     memory: (id, signal) => request(`/api/memory/${encodeURIComponent(id)}`, {signal, timeout: 20000}),
