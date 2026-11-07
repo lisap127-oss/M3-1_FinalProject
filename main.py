@@ -201,6 +201,78 @@ def feedback_link():
     raise HTTPException(status_code=405, detail="화면에서 POST /api/feedback으로 피드백을 보내세요.")
 
 
+
+# ---------- Keyword settings (prototype API) ----------
+
+def require_keyword_dev_mode():
+    if os.getenv("APP_ENV", "development").lower() != "development":
+        raise HTTPException(
+            status_code=403,
+            detail="키워드 설정 API는 개발 환경에서만 사용할 수 있습니다.",
+        )
+
+
+
+
+class KeywordSettingsRequest(BaseModel):
+    keywords: list[str] = Field(max_length=20)
+
+
+def validate_keyword_settings(user_id: str, keywords: list[str] | None = None):
+    if not user_id.strip() or len(user_id) > 100:
+        raise HTTPException(status_code=422, detail="유효한 구독자 ID를 입력하세요.")
+    if keywords is not None:
+        if any(not isinstance(k, str) or not k.strip() or len(k) > 100 for k in keywords):
+            raise HTTPException(status_code=422, detail="키워드는 1~100자여야 합니다.")
+        if len(set(k.strip() for k in keywords)) != len(keywords):
+            raise HTTPException(status_code=422, detail="중복 키워드는 저장할 수 없습니다.")
+
+
+@app.get("/api/keywords/{user_id}")
+def get_user_keywords(user_id: str):
+    require_keyword_dev_mode()
+    validate_keyword_settings(user_id)
+    try:
+        response = (
+            get_supabase()
+            .table("user_keyword_settings")
+            .select("keywords")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        return {"user_id": user_id, "keywords": rows[0]["keywords"] if rows else [], "exists": bool(rows)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"키워드 조회 실패: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="키워드 조회에 실패했습니다.") from e
+
+
+@app.put("/api/keywords/{user_id}")
+def save_user_keywords(user_id: str, request: KeywordSettingsRequest):
+    require_keyword_dev_mode()
+    validate_keyword_settings(user_id, request.keywords)
+    try:
+        keywords = [k.strip() for k in request.keywords]
+        response = (
+            get_supabase()
+            .table("user_keyword_settings")
+            .upsert(
+                {"user_id": user_id, "keywords": keywords},
+                on_conflict="user_id",
+            )
+            .execute()
+        )
+        return {"user_id": user_id, "keywords": keywords, "message": "저장 완료"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"키워드 저장 실패: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="키워드 저장에 실패했습니다.") from e
+
+
 # 뉴스 수집 API (자동화/데이터 파트): GET /api/news
 app.include_router(news_router)
 

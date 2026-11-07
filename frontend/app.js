@@ -89,6 +89,69 @@ function resetResults() {
   message('summary-error'); message('summary-error-compose'); renderResults(); saveSession();
 }
 
+// Serialize writes so older requests cannot overwrite newer keyword changes.
+let keywordSaveQueue = Promise.resolve();
+let keywordEditRevision = 0;
+let keywordLoadGeneration = 0;
+
+function persistKeywords() {
+  const userId = state.settings.userId;
+  if (!userId) return;
+
+  const keywords = [...state.settings.keywords];
+  keywordSaveQueue = keywordSaveQueue
+    .catch(() => {})
+    .then(() => api.saveKeywords(userId, keywords));
+
+  keywordSaveQueue.catch(error => {
+    if (error.status === 403) return;
+    if (state.settings.userId === userId) {
+      message('settings-error', `서버에 키워드를 저장하지 못했어요. ${error.message}`);
+    }
+  });
+}
+
+async function loadServerKeywords(migrateLocal = false) {
+  const userId = state.settings.userId;
+  if (!userId) return;
+
+  const generation = ++keywordLoadGeneration;
+  const revision = keywordEditRevision;
+  const localKeywords = [...state.settings.keywords];
+
+  try {
+    // Wait for pending keyword saves before loading remote settings.
+    await keywordSaveQueue.catch(() => {});
+
+    if (generation !== keywordLoadGeneration ||
+        revision !== keywordEditRevision ||
+        state.settings.userId !== userId) return;
+
+    const data = await api.getKeywords(userId);
+
+    if (generation !== keywordLoadGeneration ||
+        revision !== keywordEditRevision ||
+        state.settings.userId !== userId) return;
+
+    if (data.exists === false && migrateLocal && localKeywords.length) {
+      persistKeywords();
+      return;
+    }
+
+    const keywords = parseKeywords((data.keywords || []).join(','));
+    state.settings = {...state.settings, keywords};
+    saveToStorage();
+    renderKeywordTags();
+    updateView();
+  } catch (error) {
+    if (error.status === 403) return;
+    if (generation === keywordLoadGeneration &&
+        state.settings.userId === userId) {
+      message('settings-error', `서버 키워드를 불러오지 못했어요. ${error.message}`);
+    }
+  }
+}
+
 // ---------- Keywords ----------
 
 const SUGGESTED_KEYWORDS = ['AI', '반도체', '경제', '부동산', '스타트업', '채용', '기후', '정책'];
@@ -113,6 +176,7 @@ function renderKeywordTags() {
   $('user-id').value = state.settings.userId;
 }
 function setKeywords(keywords) {
+  keywordEditRevision++;
   state.settings = {...state.settings, keywords};
   // A briefing made with the old keywords is stale.
   if (state.hasResult) {
@@ -121,6 +185,7 @@ function setKeywords(keywords) {
     if (hadRealResult) notify('키워드가 바뀌어 이전 브리핑을 지웠어요. 새 키워드로 다시 만들어 주세요.', '#briefing', '브리핑으로 이동');
   }
   saveToStorage(); renderKeywordTags(); updateView();
+  persistKeywords();
 }
 function addKeywords(raw) {
   if (!raw.trim()) return true;
@@ -650,8 +715,23 @@ function saveSettings(event) {
     message('settings-error', '구독자 ID는 100자 이하로 입력하고 슬래시(/, \\)는 빼 주세요.');
     return;
   }
-  state.settings = {...state.settings, userId};
+  const previousUserId = state.settings.userId;
+  const idChanged = previousUserId !== userId;
+  if (idChanged) {
+    keywordLoadGeneration++;
+    keywordEditRevision++;
+  }
+  state.settings = {...state.settings,
+    userId, keywords: idChanged ? [] : state.settings.keywords};
   const saved = saveToStorage();
+  if (idChanged) {
+    if (state.hasResult) {
+      state.mode = 'real';
+      resetResults();
+    }
+    renderKeywordTags();
+    if (userId) loadServerKeywords();
+  }
   renderResults(); updateView(); memoryPlaceholder(); message('settings-error');
   notify(!saved ? '이 브라우저에 저장할 수 없어 이번 탭에서만 적용했어요.' :
     userId ? '구독자 ID를 저장했어요. 이제 기사에 좋아요·관심없음을 남길 수 있어요.' : '구독자 ID를 지웠어요.', '#briefing', '브리핑으로 이동');
@@ -727,8 +807,10 @@ $('check-health').addEventListener('click', checkHealth);
 $('refresh-memory').addEventListener('click', loadMemory);
 $('clear-settings').addEventListener('click', () => {
   try { storage?.removeItem(STORAGE_KEY); } catch { message('settings-error', '기기 저장소에 접근할 수 없어 설정을 지우지 못했어요.'); return; }
+  keywordLoadGeneration++; keywordEditRevision++;
   state.settings = {keywords: [], userId: ''}; state.mode = 'real'; resetResults(); renderKeywordTags(); updateView(); memoryPlaceholder(); message('settings-error');
   notify('이 기기의 키워드와 구독자 ID를 지웠어요. 서버에 저장된 내 취향은 그대로 남아 있어요.');
 });
 window.addEventListener('hashchange', () => route());
 renderKeywordTags(); updateView(); renderResults(); route(false); checkHealth();
+loadServerKeywords(true);
