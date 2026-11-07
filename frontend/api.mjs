@@ -39,5 +39,9 @@ export function createApi(fetcher = (...args) => fetch(...args)) {
     summarize: (body, signal) => request('/api/summarize', {method: 'POST', body, signal}),
     feedback: body => request('/api/feedback', {method: 'POST', body, timeout: 20000}),
     memory: (id, signal) => request(`/api/memory/${encodeURIComponent(id)}`, {signal, timeout: 20000}),
+    getKeywords: (id, signal) => request(`/api/keywords/${encodeURIComponent(id)}`, {signal, timeout: 20000}),
+    saveKeywords: (id, keywords) => request(`/api/keywords/${encodeURIComponent(id)}`, {
+      method: 'PUT', body: {keywords}, timeout: 20000
+    }),
   };
 }
