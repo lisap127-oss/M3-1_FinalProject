@@ -3,7 +3,7 @@
 관심 키워드에 맞는 뉴스를 수집하고 AI로 요약해 이메일 브리핑으로 전달하는 프로젝트입니다.
 사용자 피드백을 주제별 선호도로 저장하고 다음 뉴스 선정에 참고합니다.
 
-- 배포 주소: <https://daybrief-demo.onrender.com/> (팀 시연용 데모)
+- 배포 주소: <https://daybrief-demo.onrender.com/> 
 - 저장소: <https://github.com/lisap127-oss/M3-1_FinalProject>
 
 ## 기획의도
@@ -24,7 +24,7 @@
 | 백민서 | AI/Backend LLM | 프롬프트 설계, 요약 Agent 개발, Long-term Memory 구조 설계, API 서버 구축 |
 | 김의종 | 자동화/데이터 | RSS 뉴스 수집 파이프라인·뉴스 수집 API 구축, 이메일 브리핑 자동 발송(GitHub Actions) |
 | 김준오 | Frontend/UX | 사용자 설정 페이지(관심사·발송시간) 구현, 대시보드 UI, 피드백 수집 인터페이스 |
-| 조영경 | 배포/QA | 배포 환경 구축(Vercel·Render), DB 관리(Supabase), 테스트·QA, GitHub 관리 |
+| 조영경 | 배포/QA | 배포 환경 구축(Render), DB 관리(Supabase), 테스트·QA, GitHub 관리 |
 
 ---
 
@@ -45,7 +45,7 @@
 | 데이터 수집 | Python `feedparser` 기반 언론사 RSS 수집 | 네이버 검색 API가 신규 신청 중단·AI 요약 금지 약관이라 공개 RSS로 전환 |
 | 자동화 | GitHub Actions 일일 실행, Gmail SMTP 발송 | PC 상태와 무관하게 무료로 정시 실행되고 실행 기록이 남음 |
 | Frontend | HTML · CSS · JavaScript (FastAPI가 정적 파일 제공) | 배포를 단일 서비스로 유지해 프록시·CORS 설정 없이 화면과 API를 같은 주소에서 제공 |
-| 배포 | Vercel, Render (`render.yaml` Blueprint), GitHub Actions(CI) | 환경 변수·빌드 설정을 저장소에서 관리, 배포로 커밋 검토 후 반영 |
+| 배포 | Render (`render.yaml` Blueprint), GitHub Actions(CI) | 환경 변수·빌드 설정을 저장소에서 관리, 배포로 커밋 검토 후 반영 |
 
 ### ▪ 시스템 아키텍처
 
@@ -195,17 +195,31 @@ python -m pipelines.daily_briefing              # 실제 발송
 
 ## 사용자 테스트 결과
 
-> 실사용자 테스트 진행 후 작성합니다.
+- 테스터: 5명 (20~30대)
+- 기간: 2026.11.7 ~ 11.8
+- 방법: 배포된 데모를 직접 사용한 뒤 피드백 수집 및 반영
 
-- 테스터: 5명
-- 테스트 기간: 
-- 테스트 방법:
+**긍정적인 평가**
 
-| 주요 피드백 | 반영 사항 | 반영 여부 |
+- 키워드를 Enter로 추가하고 추천 키워드를 바로 넣을 수 있어 설정 화면이 직관적임
+- 중요도 점수 · 주제 태그 · 선정 근거 · 제외 기사와 사유를 함께 보여 줘 AI의 판단을 확인할 수 있음
+- '내 취향' 탭이 관심사 변화를 시각적으로 보여 주고, 데이터가 없을 때도 다음 행동을 안내함
+- `/health`, `/ready`, `GET /api/news`, `POST /api/summarize` 모두 정상 동작 (수집 첫 요청 약 6.6초 이후 캐시, 요약 약 2.5초)
+
+**주요 피드백 및 반영 사항**
+
+| 주요 피드백 | 반영 사항 | 상태 |
 |---|---|---|
-|  |  |  |
-|  |  |  |
-|  |  |  |
+| 웹에서 설정한 키워드가 서버에 저장되지 않음 (5명 중 4명 지적) | 키워드 추가·삭제 시 저장 API 호출 연결, 서버에서 다시 불러오기 추가 | 로컬 반영 완료 |
+| 키워드를 골라도 예시 브리핑만 보임 | "브리핑 만들기"를 `GET /api/news` → `POST /api/summarize` 흐름으로 연결, 한글 키워드 URL 인코딩 | 반영 후 재배포 |
+| 메일 구독을 신청할 경로가 없음 (3명 지적) | 구글 폼(이름·이메일·키워드·개인정보 동의) 신청과 "메일로 받기" 버튼 연결 | 예정 |
+| 'AI' 키워드에 조류인플루엔자 기사가 섞임 (2명 지적) | 수집 단계의 동음이의어 제외 규칙 추가 (요약 단계에서는 이미 제외됨) | 예정 |
+| 예시 브리핑이 선택한 키워드·날짜와 무관해 오해 소지 (3명 지적) | 예시 데이터임을 명확히 표시하고 실제 브리핑으로 전환하는 경로 제공 | 예정 |
+| 구독자 ID만으로 기록을 조회할 수 있어 보안이 취약함 (2명 지적) | 로그인·세션 기반 접근 제어 추가, 그 전까지 데모용임을 화면에 안내 | 예정 |
+
+배포 환경에서는 인증 기능이 없어 키워드 저장 API를 차단해 둔 상태이며, 운영에서 사용하려면 접근 제어가 먼저 필요합니다.
+
+테스터별 원문과 전체 항목은 [사용자 테스트 결과 상세](docs/user-testing.md)를 참고하세요.
 
 ## AI 윤리 및 개인정보
 
@@ -217,20 +231,16 @@ python -m pipelines.daily_briefing              # 실제 발송
 
 ## 문서
 
-- [요구사항 명세서](docs/requirements.md)
+- [요구사항 명세서](docs/requirements.md)  
+- [사용자 테스트 결과 상세](docs/user-testing.md)  
 - [프론트엔드 분석 및 백엔드 연동 인계](docs/frontend-integration.md)
 - [디자인 기준](DESIGN.md)
 - [뉴스 수집·자동 브리핑 파이프라인](docs/automation_pipeline.md)
 - [장기 기억 설계](docs/long_term_memory_design.md)
 - [배포 및 환경 변수 안내](docs/DEPLOYMENT.md)
-- [QA 결과와 실제 연동 체크리스트](docs/QA.md)
-
-기존 문서의 서버 메모리 저장 설명과 점수 예시는 이전 설계입니다.
-최신 API는 Supabase와 -5~5 선호도 점수를 사용합니다.
+- [QA 결과와 실제 연동 체크리스트](docs/QA.md)  
 
 ## 링크
 
 - 배포 URL <https://daybrief-demo.onrender.com/>
 - 발표 자료: [PPT](docs/presentation.pptx) `dosc/`에서 .md 확인 가능   
-기존 문서의 서버 메모리 저장 설명과 점수 예시는 이전 설계입니다.
-최신 API는 Supabase와 -5~5 선호도 점수를 사용합니다.
